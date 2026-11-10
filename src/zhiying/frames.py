@@ -24,6 +24,35 @@ from zhiying.tools.ffmpeg import resolve_ffmpeg
 FRAME_FORMAT = "jpg"
 FRAME_QUALITY = 2  # ffmpeg -q:v 2 高质量 jpeg
 
+# 长视频性能参数（W7 实测：17分钟/204MB 视频逐帧解码 >10 分钟）
+LONG_VIDEO_SEC = 600        # 阈值：10 分钟以上算长视频
+SKIP_SHORT = 0              # <10min：逐帧检测
+SKIP_MID = 2                # 10-30min：每 3 帧取 1
+SKIP_LONG = 5               # 30min-1h：每 6 帧取 1
+SKIP_VERY_LONG = 11         # >1h：每 12 帧取 1
+
+
+def _pick_frame_skip(duration: float) -> int:
+    """按时长选跳帧步长（跳帧不影响场景切点精度到秒级）。"""
+    if duration <= 0:
+        return 0
+    if duration < LONG_VIDEO_SEC:
+        return SKIP_SHORT
+    if duration < 1800:
+        return SKIP_MID
+    if duration < 3600:
+        return SKIP_LONG
+    return SKIP_VERY_LONG
+
+
+def _cap_max_frames(duration: float, requested: int) -> int:
+    """按时长限制帧数：帧只用于画面理解，不必过密（控制 VLM 调用成本）。"""
+    if duration <= 0:
+        return requested
+    # 约 1 帧/分钟，夹在 [6, requested] 之间
+    by_dur = max(6, int(duration / 60))
+    return min(requested, by_dur)
+
 
 def extract_keyframes(video_id: str, max_frames: int = 60, threshold: float = 27.0) -> list[dict]:
     """PySceneDetect 场景切换检测，每场景取 1 帧。"""
@@ -40,11 +69,22 @@ def extract_keyframes(video_id: str, max_frames: int = 60, threshold: float = 27
 
     from scenedetect import ContentDetector, SceneManager, open_video
 
+    duration = meta.duration or 0
+    frame_skip = _pick_frame_skip(duration)
+    max_frames = _cap_max_frames(duration, max_frames)
+
+    # W7 实测结论：长视频的瓶颈是 OpenCV 逐帧解码（17min/204MB 即使跳帧仍 >12min），
+    # 而非场景检测算法本身。超过阈值的视频直接放弃场景检测，改 ffmpeg 定点 seek 采样
+    # （seek 不依赖解码前置帧，O(1) 级，全流程秒级完成）。
+    if duration >= LONG_VIDEO_SEC:
+        return extract_uniform_frames(video_id, max_frames=max_frames)
+
     video = open_video(str(src))
     sm = SceneManager()
     sm.add_detector(ContentDetector(threshold=threshold))
     # scenedetect 0.7：检测循环在 SceneManager 上（0.6 才是 video.detect_scenes）
-    sm.detect_scenes(video, show_progress=False)
+    # frame_skip：长视频跳帧检测（W7 性能优化，实测显著降低解码耗时）
+    sm.detect_scenes(video, show_progress=False, frame_skip=frame_skip)
     scenes = sm.get_scene_list()
     if not scenes:
         # 无场景切换（静态画面类视频）→ 均匀抽帧
@@ -77,6 +117,7 @@ def extract_uniform_frames(video_id: str, max_frames: int = 40) -> list[dict]:
     duration = meta.duration or _probe_duration(src)
     if duration <= 0:
         raise RuntimeError(f"无法确定视频时长: {src}")
+    max_frames = _cap_max_frames(duration, max_frames)
 
     out = frames_dir(video_id)
     out.mkdir(exist_ok=True)
