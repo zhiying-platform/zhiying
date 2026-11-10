@@ -191,11 +191,6 @@ def sensevoice_transcribe(video_id: str) -> Path | None:
     if not audio.exists():
         extract_audio(video_id)
 
-    ff = resolve_ffmpeg()
-    audio = audio_dir(video_id) / "audio.wav"
-    if not audio.exists():
-        extract_audio(video_id)
-
     duration = _audio_duration_seconds(audio)
     if duration <= 0:
         print("⚠ 无法读取音频时长，放弃第二级转写")
@@ -251,8 +246,17 @@ def sensevoice_transcribe(video_id: str) -> Path | None:
 
 
 def whisper_transcribe(video_id: str) -> Path | None:
-    """本地 faster-whisper 保底转写。首次使用自动下载 small 模型（约 500MB）。"""
-    from faster_whisper import WhisperModel
+    """本地 faster-whisper 保底转写（可选组件）。
+
+    首次使用自动下载 small 模型（约 500MB）；未安装时返回 None 并给安装提示，
+    降级编排自动结束（前两级：平台字幕/SenseVoice 不受影响）。
+    """
+    try:
+        from faster_whisper import WhisperModel
+    except ImportError:
+        print("⚠ 本地 Whisper 未安装（可选组件）")
+        print("  └─ 需要离线转写保底时安装: pip install faster-whisper")
+        return None
 
     audio = audio_dir(video_id) / "audio.wav"
     if not audio.exists():

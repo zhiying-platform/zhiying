@@ -31,18 +31,18 @@ FRAME_MATCH_WINDOW = 60.0  # 帧与语音段的匹配窗口（秒）
 # --------------------------------------------------------------- 帧描述（带缓存）
 
 
-def describe_frames(video_id: str, max_frames: int = 20, force: bool = False) -> list[dict]:
-    """对所有关键帧调 VLM，结果缓存到 frames/descriptions.json。"""
+def describe_frames(video_id: str, max_frames: int = 20, force: bool = False, precision: str = "fast") -> list[dict]:
+    """对所有关键帧调 VLM，结果缓存到 frames/descriptions.json（感知精度，切换后失效重取）。"""
     cache = frames_dir(video_id) / "descriptions.json"
     if cache.exists() and not force:
         try:
             data = json.loads(cache.read_text(encoding="utf-8"))
-            if data:
-                return data
+            if isinstance(data, dict) and data.get("precision") == precision and data.get("items"):
+                return data["items"]
         except Exception:  # noqa: BLE001
             pass
 
-    frames = extract_keyframes(video_id, max_frames=max_frames)
+    frames = extract_keyframes(video_id, max_frames=max_frames, precision=precision)
     if not frames:
         return []
 
@@ -58,7 +58,7 @@ def describe_frames(video_id: str, max_frames: int = 20, force: bool = False) ->
     with cf.ThreadPoolExecutor(max_workers=4) as ex:
         for item in ex.map(work, frames):
             out.append(item)
-    cache.write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
+    cache.write_text(json.dumps({"precision": precision, "items": out}, ensure_ascii=False, indent=2), encoding="utf-8")
     return out
 
 
@@ -93,10 +93,10 @@ def _frames_in_window(frames: list[dict], start: float, end: float) -> list[dict
     return [nearest]
 
 
-def build_multimodal(video_id: str, max_frames: int = 20) -> list[dict]:
+def build_multimodal(video_id: str, max_frames: int = 20, precision: str = "fast") -> list[dict]:
     """生成 A1 的机器可读形态：每段带 speech/visual_facts/screen_text/frame_refs。"""
     segments = _load_transcript(video_id)
-    frames = describe_frames(video_id, max_frames=max_frames)
+    frames = describe_frames(video_id, max_frames=max_frames, precision=precision)
     if not segments:
         return []
 
@@ -190,9 +190,9 @@ def write_multimodal_jsonl(video_id: str, rows: list[dict]) -> Path:
     return out
 
 
-def assemble(video_id: str, max_frames: int = 20) -> dict:
+def assemble(video_id: str, max_frames: int = 20, precision: str = "fast") -> dict:
     """A1 组装总入口。"""
-    rows = build_multimodal(video_id, max_frames=max_frames)
+    rows = build_multimodal(video_id, max_frames=max_frames, precision=precision)
     if not rows:
         return {"ok": False, "reason": "无转写或无帧数据，请先执行 transcribe"}
     md = write_multimodal_md(video_id, rows)
@@ -210,7 +210,7 @@ def _text_llm(messages: list[dict], max_tokens: int = 1200) -> str:
     return chat_text(messages, max_tokens=max_tokens)
 
 
-def summarize(video_id: str, force: bool = False) -> dict:
+def summarize(video_id: str, force: bool = False, precision: str = "fast") -> dict:
     """A3：视频级摘要 + ≥3 主题标签 + 可溯源要点（产物缓存，幂等）。"""
     cache = video_dir(video_id) / "summary.json"
     if cache.exists() and not force:
@@ -220,7 +220,7 @@ def summarize(video_id: str, force: bool = False) -> dict:
                 return {"ok": True, "path": str(cache), "cached": True, **d}
         except Exception:  # noqa: BLE001
             pass
-    rows = build_multimodal(video_id)
+    rows = build_multimodal(video_id, precision=precision)
     if not rows:
         return {"ok": False, "reason": "无多模态数据，请先 assemble"}
     meta = load_meta(video_id)

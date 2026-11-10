@@ -16,7 +16,7 @@ from __future__ import annotations
 import threading
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from pydantic import BaseModel, Field
 
 from zhiying import __version__
@@ -37,6 +37,7 @@ _lock = threading.Lock()
 class TaskCreate(BaseModel):
     source: str = Field(..., description="视频 URL 或本地路径")
     quality: str = Field("480", description="最高清晰度")
+    precision: str = Field("fast", description="画面识别精度：fast（默认，≥10min 走 seek 采样）| precise（逐帧场景检测）")
 
 
 class SearchRequest(BaseModel):
@@ -52,9 +53,9 @@ class AskRequest(BaseModel):
 # ---------------------------------------------------------------- 工具
 
 
-def _run_job(video_id: str, quality: str, src: str) -> None:
+def _run_job(video_id: str, quality: str, src: str, precision: str = "fast") -> None:
     try:
-        run_sync(video_id, quality=quality, src=src)
+        run_sync(video_id, quality=quality, src=src, precision=precision)
     except Exception as e:  # noqa: BLE001
         from zhiying.pipeline import set_stage
 
@@ -80,11 +81,56 @@ def create_task(req: TaskCreate) -> dict:
     if meta and meta.status == "done" and (video_dir(vid) / "summary.json").exists() and vid not in _jobs:
         raise HTTPException(status_code=409, detail={"task_id": vid, "stage": "done"})
 
-    t = threading.Thread(target=_run_job, args=(vid, req.quality, req.source), daemon=True, name=f"api-{vid}")
+    t = threading.Thread(target=_run_job, args=(vid, req.quality, req.source, req.precision), daemon=True, name=f"api-{vid}")
     with _lock:
         _jobs[vid] = t
     t.start()
     return {"task_id": vid, "stage": "queued"}
+
+
+@app.post("/api/upload")
+async def upload_video(
+    file: UploadFile = File(...),
+    quality: str = Form("480"),
+    precision: str = Form("fast"),
+) -> dict:
+    """上传本地视频并创建处理任务（一步到位：落盘 + 建任务）。
+
+    流式写盘（1MB 分块），支持大文件；同名文件自动加时间戳后缀。
+    """
+    from datetime import datetime
+
+    incoming = data_root() / "incoming"
+    incoming.mkdir(parents=True, exist_ok=True)
+    orig_name = Path(file.filename or "upload.mp4").name
+    dst = incoming / orig_name
+    if dst.exists():
+        stamp = datetime.now().strftime("%Y%m%d%H%M%S")
+        dst = incoming / f"{Path(orig_name).stem}_{stamp}{Path(orig_name).suffix}"
+    try:
+        with dst.open("wb") as f:
+            while chunk := await file.read(1024 * 1024):
+                f.write(chunk)
+    except Exception as e:  # noqa: BLE001
+        dst.unlink(missing_ok=True)
+        raise HTTPException(status_code=500, detail=f"保存上传文件失败: {e}") from e
+    if dst.stat().st_size == 0:
+        dst.unlink(missing_ok=True)
+        raise HTTPException(status_code=400, detail="上传文件为空")
+
+    _st, vid = detect_source(str(dst))
+    existing = get_task(vid)
+    if existing and existing.get("stage") in ("queued", "downloading", "transcribing", "visual", "summarizing"):
+        raise HTTPException(status_code=409, detail={"task_id": vid, "stage": existing.get("stage")})
+    meta = load_meta(vid)
+    if meta and meta.status == "done" and (video_dir(vid) / "summary.json").exists() and vid not in _jobs:
+        raise HTTPException(status_code=409, detail={"task_id": vid, "stage": "done"})
+
+    t = threading.Thread(target=_run_job, args=(vid, quality, str(dst), precision), daemon=True, name=f"api-upload-{vid}")
+    with _lock:
+        _jobs[vid] = t
+    t.start()
+    return {"task_id": vid, "file": str(dst), "stage": "queued"}
 
 
 @app.get("/api/tasks")

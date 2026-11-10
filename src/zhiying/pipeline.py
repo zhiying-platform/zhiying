@@ -4,8 +4,9 @@
     {"stage": queued|downloading|transcribing|visual|summarizing|done|failed,
      "detail": 当前阶段说明, "error": 失败原因, "updated_at": iso}
 
-ingest 默认启动独立子进程执行全流程（下载→转写→组装→摘要），立即返回 video_id；
+ingest 默认同步执行全流程（下载→转写→组装→摘要）；--async 启动独立子进程。
 watch 轮询 task.json 直到 done/failed；retry 只重跑（各阶段内部幂等）。
+precision（DR-22）：画面识别精度两档 fast/precise，全链路穿透。
 """
 
 from __future__ import annotations
@@ -49,11 +50,12 @@ def get_task(video_id: str) -> dict | None:
         return None
 
 
-def _pipeline(video_id: str, quality: str, src: str | None = None) -> None:
-    """全流程（子进程内执行）；各阶段内部幂等，retry 直接重跑即可。
+def _pipeline(video_id: str, quality: str, src: str | None = None, precision: str = "fast") -> None:
+    """全流程（同步或子进程内执行）；各阶段内部幂等，retry 直接重跑即可。
 
     src：首次 ingest 时 meta.json 尚未生成（download 成功后才写），
     由调用方传入原始 URL/路径兜底；retry 场景 meta 已存在，src 可缺省。
+    precision：画面识别精度（DR-22 两档：fast/precise）。
     """
     from zhiying.assemble import assemble, summarize
     from zhiying.download import download, load_meta
@@ -77,14 +79,15 @@ def _pipeline(video_id: str, quality: str, src: str | None = None) -> None:
             set_stage(video_id, "failed", error="转写失败（全部通道）")
             return
 
-        set_stage(video_id, "visual", "关键帧提取与 VLM 识别")
-        r = assemble(video_id)
+        prec_label = "精细" if precision == "precise" else "快速"
+        set_stage(video_id, "visual", f"关键帧提取与 VLM 识别（{prec_label}档）")
+        r = assemble(video_id, precision=precision)
         if not r.get("ok"):
             set_stage(video_id, "failed", error=str(r.get("reason")))
             return
 
         set_stage(video_id, "summarizing", "生成结构化摘要")
-        s = summarize(video_id)
+        s = summarize(video_id, precision=precision)
         if not s.get("ok"):
             set_stage(video_id, "failed", error=str(s.get("reason")))
             return
@@ -94,14 +97,18 @@ def _pipeline(video_id: str, quality: str, src: str | None = None) -> None:
         set_stage(video_id, "failed", error=f"{type(e).__name__}: {str(e)[:200]}")
 
 
-def start_async(video_id: str, quality: str = "1080") -> None:
-    """启动独立子进程执行全流程（ingest 异步化）。
+def start_async(video_id: str, quality: str = "1080", src: str | None = None, precision: str = "fast") -> None:
+    """启动独立子进程执行全流程（--async 模式）。
 
     daemon 线程会随 CLI 进程退出被杀（实测事故：任务永远停在 queued）；
     改用独立子进程跑同步管道，跨进程存活，task.json 为唯一状态源。
+    注意：exec 会话环境可能回收 detached 子进程（实测），生产异步走 V0.3 服务层。
     """
     set_stage(video_id, "queued", "任务已入队")
-    cmd = [sys.executable, "-m", "zhiying.pipeline", "--video-id", video_id, "--quality", quality]
+    cmd = [sys.executable, "-m", "zhiying.pipeline", "--video-id", video_id,
+           "--quality", quality, "--precision", precision]
+    if src:
+        cmd.extend(["--src", src])
     # 子进程日志：后台运行时保留诊断信息
     log_dir = video_dir(video_id)
     log_dir.mkdir(parents=True, exist_ok=True)
@@ -119,9 +126,9 @@ def start_async(video_id: str, quality: str = "1080") -> None:
     )
 
 
-def run_sync(video_id: str, quality: str = "1080", src: str | None = None) -> None:
+def run_sync(video_id: str, quality: str = "1080", src: str | None = None, precision: str = "fast") -> None:
     """同步执行（默认模式与子进程入口）。"""
-    _pipeline(video_id, quality, src=src)
+    _pipeline(video_id, quality, src=src, precision=precision)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -129,11 +136,12 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--video-id", required=True)
     ap.add_argument("--quality", default="1080")
     ap.add_argument("--src", default=None, help="首次处理时的原始 URL/路径")
+    ap.add_argument("--precision", default="fast", choices=["fast", "precise"])
     args = ap.parse_args(argv)
     from zhiying.console import setup_console
 
     setup_console()
-    run_sync(args.video_id, quality=args.quality, src=args.src)
+    run_sync(args.video_id, quality=args.quality, src=args.src, precision=args.precision)
     return 0
 
 

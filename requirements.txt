@@ -14,8 +14,10 @@ requests>=2.31
 # ffmpeg 二进制（免系统安装；也可用系统 ffmpeg，见 zhiying.tools.ffmpeg）
 imageio-ffmpeg>=0.5
 
-# 第三级转写保底（本地 Whisper）
-faster-whisper>=1.2.1
+# ---- 可选依赖：本地 Whisper（第三级转写保底）----
+# 平时不随主依赖安装；需要离线转写保底时：pip install faster-whisper
+# 不安装时三级降级自动跳过该级，功能不受影响（前两级：平台字幕/SenseVoice）
+# faster-whisper>=1.2.1
 
 # 关键帧场景检测
 scenedetect>=0.7.3

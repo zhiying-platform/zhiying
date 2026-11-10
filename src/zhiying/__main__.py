@@ -44,7 +44,7 @@ def _cmd_ingest(args: argparse.Namespace) -> int:
         # 默认同步：实测 CLI 子进程会被父会话回收，后台异步不可靠（V0.2 服务层提供真正队列）
         from zhiying.pipeline import get_task, run_sync
 
-        run_sync(vid, quality=args.quality, src=args.src)
+        run_sync(vid, quality=args.quality, src=args.src, precision=args.precision)
         t = get_task(vid)
         ok = bool(t and t.get("stage") == "done")
         mark = "✅" if ok else "❌"
@@ -59,7 +59,7 @@ def _cmd_ingest(args: argparse.Namespace) -> int:
         else:
             print(f"   产物: python -m zhiying open {vid}")
         return 0 if ok else 1
-    start_async(vid, quality=args.quality)
+    start_async(vid, quality=args.quality, src=args.src, precision=args.precision)
     print(f"✅ 任务已创建（后台子进程）: video_id={vid}")
     print("   ⚠ 注意：本环境 CLI 退出可能回收子进程；如需可靠后台执行请用 V0.2 服务层")
     print(f"   跟踪: python -m zhiying watch {vid}")
@@ -196,14 +196,14 @@ def _cmd_retry(args: argparse.Namespace) -> int:
     if not t:
         # 历史视频无 task.json：新建 queued 状态并启动子进程
         print(f"ℹ 该视频无历史任务记录，重新启动全流程")
-        start_async(vid, quality=args.quality)
+        start_async(vid, quality=args.quality, precision=args.precision)
         print(f"⏳ 已启动，跟踪: python -m zhiying watch {vid}")
         return 0
     if t.get("stage") == "done":
         print(f"ℹ 任务已完成，无需重试（各阶段幂等缓存）")
         return 0
     print(f" 上次失败于 [{t.get('stage')}]，从该阶段重跑（已完成产物复用）")
-    start_async(vid, quality=args.quality)
+    start_async(vid, quality=args.quality, precision=args.precision)
     print(f"⏳ 已重启，跟踪: python -m zhiying watch {vid}")
     return 0
 
@@ -288,7 +288,7 @@ def _cmd_assemble(args: argparse.Namespace) -> int:
     from zhiying.console import setup_console
 
     setup_console()
-    r = assemble(args.video_id, max_frames=args.max_frames)
+    r = assemble(args.video_id, max_frames=args.max_frames, precision=args.precision)
     if r.get("ok"):
         print(f"✅ A1 多模态文案产出完成，{r['segments']} 段")
         print(f"   MD: {r['md']}")
@@ -303,7 +303,7 @@ def _cmd_summarize(args: argparse.Namespace) -> int:
     from zhiying.console import setup_console
 
     setup_console()
-    r = summarize(args.video_id, force=args.force)
+    r = summarize(args.video_id, force=args.force, precision=args.precision)
     if r.get("ok"):
         cached = "（缓存）" if r.get("cached") else ""
         print(f"✅ A3 摘要产出{cached}：{r['path']}")
@@ -325,6 +325,8 @@ def main(argv: list[str] | None = None) -> int:
     p_ing = sub.add_parser("ingest", help="处理一条视频（默认前台同步全流程）")
     p_ing.add_argument("src", help="视频 URL 或本地文件路径")
     p_ing.add_argument("--quality", default="1080", help="最高清晰度（默认 1080）")
+    p_ing.add_argument("--precision", default="fast", choices=["fast", "precise"],
+                       help="画面识别精度：fast=≥10min 走 seek 采样（秒级）；precise=强制逐帧场景检测（长视频 10min+）")
     p_ing.add_argument("--async", dest="async_mode", action="store_true",
                        help="后台子进程模式（本环境不可靠，V0.2 服务层替代）")
     p_ing.add_argument("--allow-unknown", action="store_true", help="允许未识别的来源类型")
@@ -340,6 +342,7 @@ def main(argv: list[str] | None = None) -> int:
     p_rt = sub.add_parser("retry", help="从失败阶段重跑（已完成产物复用）")
     p_rt.add_argument("video_id", help="video_id")
     p_rt.add_argument("--quality", default="1080")
+    p_rt.add_argument("--precision", default="fast", choices=["fast", "precise"])
 
     p_op = sub.add_parser("open", help="打开产物目录")
     p_op.add_argument("video_id", help="video_id")
@@ -350,10 +353,13 @@ def main(argv: list[str] | None = None) -> int:
     p_as = sub.add_parser("assemble", help="A1 多模态文案（md + jsonl 同源）")
     p_as.add_argument("video_id", help="已 transcribe 的 video_id")
     p_as.add_argument("--max-frames", type=int, default=20, help="最大帧数（默认 20）")
+    p_as.add_argument("--precision", default="fast", choices=["fast", "precise"],
+                      help="画面识别精度（DR-22）：影响帧缓存命中与提取路由")
 
     p_sum = sub.add_parser("summarize", help="A3 结构化摘要（缓存幂等）")
     p_sum.add_argument("video_id", help="已 assemble 的 video_id")
     p_sum.add_argument("--force", action="store_true", help="忽略缓存重新生成")
+    p_sum.add_argument("--precision", default="fast", choices=["fast", "precise"])
 
     args = parser.parse_args(argv)
     return {
