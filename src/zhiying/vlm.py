@@ -58,12 +58,16 @@ def _mime(p: Path) -> str:
 
 
 def _longcat_config() -> tuple[str, str, str]:
-    """返回 (base_url, model, api_key)，全部可环境变量覆盖。"""
+    """返回 (base_url, model, api_key)，全部可环境变量覆盖。
+
+    Key 分离（DR-20 混搭模式）：视觉专用 ZHIYING_VLM_LONGCAT_API_KEY
+    优先于共享 LONGCAT_API_KEY；两者都未配置时报错。
+    """
     base = os.environ.get("ZHIYING_LONGCAT_BASE", "https://api.longcat.chat/openai/v1")
     model = os.environ.get("ZHIYING_LONGCAT_MODEL", "LongCat-2.5")
-    key = getenv("LONGCAT_API_KEY")
+    key = getenv("ZHIYING_VLM_LONGCAT_API_KEY") or getenv("LONGCAT_API_KEY")
     if not key:
-        raise VLMError("未配置 LONGCAT_API_KEY")
+        raise VLMError("未配置 LONGCAT_API_KEY（或视觉专用 ZHIYING_VLM_LONGCAT_API_KEY）")
     return base.rstrip("/"), model, key.strip()
 
 
@@ -111,9 +115,9 @@ def describe_frame_siliconflow(frame_path: Path, prompt: str) -> str:
     LongCat-2.5 适配器保持首选（DR-14）；实测 2026-11-09 SiliconFlow
     Qwen/Qwen3-VL-8B-Instruct 已跑通帧图→描述+OCR 回收闭环，作为默认可用实现。
     """
-    key = getenv("SILICONFLOW_API_KEY")
+    key = getenv("ZHIYING_VLM_SILICONFLOW_API_KEY") or getenv("SILICONFLOW_API_KEY")
     if not key:
-        raise VLMError("未配置 SILICONFLOW_API_KEY")
+        raise VLMError("未配置 SILICONFLOW_API_KEY（或视觉专用 ZHIYING_VLM_SILICONFLOW_API_KEY）")
     key = key.strip()
     model = os.environ.get("ZHIYING_SF_VLM_MODEL", "Qwen/Qwen3-VL-8B-Instruct")
     b64 = base64.b64encode(Path(frame_path).read_bytes()).decode()

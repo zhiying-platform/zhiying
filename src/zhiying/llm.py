@@ -25,9 +25,10 @@ class LLMError(RuntimeError):
 def _longcat_chat(messages: list[dict], max_tokens: int, temperature: float) -> str:
     base = os.environ.get("ZHIYING_LONGCAT_BASE", "https://api.longcat.chat/openai/v1").rstrip("/")
     model = os.environ.get("ZHIYING_LONGCAT_MODEL", "LongCat-2.5")
-    key = getenv("LONGCAT_API_KEY")
+    # Key 分离（DR-20 混搭模式）：文本专用 ZHIYING_TEXT_LONGCAT_API_KEY 优先于共享 LONGCAT_API_KEY
+    key = getenv("ZHIYING_TEXT_LONGCAT_API_KEY") or getenv("LONGCAT_API_KEY")
     if not key:
-        raise LLMError("未配置 LONGCAT_API_KEY")
+        raise LLMError("未配置 LONGCAT_API_KEY（或文本专用 ZHIYING_TEXT_LONGCAT_API_KEY）")
     r = requests.post(
         f"{base}/chat/completions",
         headers={"Authorization": f"Bearer {key.strip()}", "Content-Type": "application/json"},
@@ -49,9 +50,9 @@ def _longcat_chat(messages: list[dict], max_tokens: int, temperature: float) -> 
 
 
 def _siliconflow_chat(messages: list[dict], max_tokens: int, temperature: float) -> str:
-    key = getenv("SILICONFLOW_API_KEY")
+    key = getenv("ZHIYING_TEXT_SILICONFLOW_API_KEY") or getenv("SILICONFLOW_API_KEY")
     if not key:
-        raise LLMError("未配置 SILICONFLOW_API_KEY")
+        raise LLMError("未配置 SILICONFLOW_API_KEY（或文本专用 ZHIYING_TEXT_SILICONFLOW_API_KEY）")
     model = os.environ.get("ZHIYING_TEXT_MODEL", "Qwen/Qwen3.5-9B")
     r = requests.post(
         "https://api.siliconflow.cn/v1/chat/completions",
