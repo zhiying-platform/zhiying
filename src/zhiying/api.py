@@ -154,16 +154,23 @@ async def upload_video(
 
 
 @app.delete("/api/tasks/{video_id}")
-def delete_task(video_id: str) -> dict:
-    """删除视频全部数据（任务管理，DR-25）：KB 行（级联）+ 工作目录 + 在途任务表项。"""
+def delete_task(video_id: str, mode: str = "record", keep_source: bool = False) -> dict:
+    """删除视频数据（DR-26 两种模式）：
+
+    mode=record（默认）：仅清任务记录（task.json/meta.json），保留知识库与源视频/产物；
+    mode=all：全部数据（KB 级联 + 工作目录），仅用于彻底清除；
+    keep_source=true（配 all）：额外保留源视频文件。
+    """
     from zhiying.kb import delete_video_data
 
+    if mode not in ("record", "all"):
+        raise HTTPException(status_code=400, detail="mode 仅支持 record|all")
     if not load_meta(video_id) and not (data_root() / "videos" / video_id).exists():
         raise HTTPException(status_code=404, detail="任务不存在")
     with _lock:
         _jobs.pop(video_id, None)
-    r = delete_video_data(video_id)
-    return {"deleted": True, **r}
+    r = delete_video_data(video_id, mode=mode, keep_source=keep_source)
+    return {"deleted": True, "mode": mode, **r}
 
 
 _RUN_STAGES = ("queued", "downloading", "transcribing", "visual", "summarizing")

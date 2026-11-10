@@ -19,10 +19,14 @@ from zhiying.envkeys import getenv
 # ------------------------------------------------------------------ 连接与配置
 
 
-def delete_video_data(video_id: str) -> dict:
-    """删除视频全部数据（任务管理 DR-25）：KB 行（级联 segments/chunks）+ 工作目录。
+def delete_video_data(video_id: str, mode: str = "record", keep_source: bool = False) -> dict:
+    """删除视频数据（DR-26 任务管理两种模式）。
 
-    幂等：KB 无行、目录不存在均视为删除成功。返回删除详情供 UI 提示。
+    mode="record"（默认）：仅清任务记录（task.json + meta.json），
+      保留 KB 与源视频/产物 —— 用于清理已失败/弃用的任务记录而不丢已完成成果。
+    mode="all"：全部数据（KB 级联 + 工作目录），仅用于明确要求彻底清除时。
+    keep_source=True：mode=all 时额外保留源视频（防误删昂贵的已下载视频）。
+    幂等：KB 无行、目录不存在均视为删除成功。
     """
     import shutil
 
@@ -31,20 +35,39 @@ def delete_video_data(video_id: str) -> dict:
     from zhiying.paths import video_dir as _video_dir
 
     kb_deleted = False
-    try:
-        with psycopg.connect(**db_conn_kwargs()) as conn:
-            cur = conn.execute("DELETE FROM videos WHERE id = %s", (video_id,))
-            kb_deleted = cur.rowcount > 0
-            conn.commit()
-    except Exception:  # noqa: BLE001  KB 不可达时仍继续删目录
-        pass
+    deleted_items: list[str] = []
+
+    if mode == "all":
+        try:
+            with psycopg.connect(**db_conn_kwargs()) as conn:
+                cur = conn.execute("DELETE FROM videos WHERE id = %s", (video_id,))
+                kb_deleted = cur.rowcount > 0
+                conn.commit()
+        except Exception:  # noqa: BLE001  KB 不可达时仍继续删目录
+            pass
+        deleted_items.append("知识库") if kb_deleted else None
 
     d = _video_dir(video_id)
     dir_deleted = False
     if d.exists():
-        shutil.rmtree(d, ignore_errors=True)
-        dir_deleted = not d.exists()
-    return {"kb_deleted": kb_deleted, "dir_deleted": dir_deleted}
+        if mode == "all" and not keep_source:
+            shutil.rmtree(d, ignore_errors=True)
+            dir_deleted = not d.exists()
+            if dir_deleted:
+                deleted_items.append("工作目录（含源视频与产物）")
+        else:
+            # record 模式：只删任务记录文件，保留 source/产物/帧等
+            for name in ("task.json", "meta.json"):
+                f = d / name
+                if f.exists():
+                    f.unlink(missing_ok=True)
+            dir_deleted = True
+            deleted_items.append("任务记录（task/meta）")
+    return {
+        "kb_deleted": kb_deleted,
+        "dir_deleted": dir_deleted,
+        "deleted_items": deleted_items,
+    }
 
 
 def db_conn_kwargs() -> dict:
