@@ -21,7 +21,14 @@ from pathlib import Path
 
 
 def data_root() -> Path:
-    env = os.environ.get("ZHIYING_DATA")
+    """数据根目录（DR-27 用户可配置）。
+
+    优先级：进程环境 ZHIYING_DATA → .env 文件同名项 → <repo>/data 默认值。
+    切换路径后历史数据不会自动迁移（.env.example 有说明）。
+    """
+    from zhiying.envkeys import getenv
+
+    env = os.environ.get("ZHIYING_DATA") or getenv("ZHIYING_DATA")
     if env:
         p = Path(env).expanduser().resolve()
         p.mkdir(parents=True, exist_ok=True)

@@ -245,6 +245,8 @@ def _cmd_config(_args: argparse.Namespace) -> int:
     print()
     print("VLM: ZHIYING_VLM_PROVIDER=siliconflow（默认）| longcat（Key 激活后切换）")
     print("转写: 平台字幕 → SenseVoice → 本地 Whisper 自动降级")
+    data_dir = getenv("ZHIYING_DATA")
+    print(f"数据目录: {data_dir or '(默认) 仓库内 data/'}")
     print("=" * 40)
     return 0
 
