@@ -78,16 +78,14 @@ def readonly_config() -> dict:
 
     不含任何 Key；数据目录修改仍走 .env（安装级配置，改后需重启，不做页面编辑）。
     """
-    import os as _os
-
     from zhiying.envkeys import getenv
     from zhiying.paths import data_root
 
     return {
         "version": __version__,
-        "vlm_provider": _os.environ.get("ZHIYING_VLM_PROVIDER", "longcat"),
-        "text_provider": _os.environ.get("ZHIYING_TEXT_PROVIDER", "longcat"),
-        "embed_model": _os.environ.get("ZHIYING_EMBED_MODEL", "BAAI/bge-m3"),
+        "vlm_provider": os.environ.get("ZHIYING_VLM_PROVIDER", "longcat"),
+        "text_provider": os.environ.get("ZHIYING_TEXT_PROVIDER", "longcat"),
+        "embed_model": os.environ.get("ZHIYING_EMBED_MODEL", "BAAI/bge-m3"),
         "data_dir": str(data_root()),
         "keys_configured": {
             "siliconflow": bool(getenv("SILICONFLOW_API_KEY")),

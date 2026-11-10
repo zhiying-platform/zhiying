@@ -135,7 +135,7 @@ ingest → download（yt-dlp 封装）
 |---|---|---|
 | V0.1 | CLI 最小闭环（单条视频端到端） | ✅ 已完成 |
 | V0.2 | 知识库入库 + 检索 + FastAPI + RAG 问答 + MCP 接入 | ✅ 已完成 |
-| V0.3 | Web 前端（任务台 / 知识库浏览 / 问答界面） | 🚧 开发中（前端仓 [zhiying-web](https://github.com/zhiying-platform/zhiying-web)）|
+| V0.3 | Web 前端（任务台 / 知识库浏览 / 问答界面） | ✅ 当前（前端仓 [zhiying-web](https://github.com/zhiying-platform/zhiying-web)）|
 | V1.0 | 产品化（触发条件制） | 规划中 |
 
 ## 相关仓库
