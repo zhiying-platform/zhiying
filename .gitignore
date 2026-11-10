@@ -22,3 +22,6 @@ data/
 # ---- 系统 ----
 .DS_Store
 Thumbs.db
+
+# ---- 前端已拆至独立仓 zhiying-web（DR-21）----
+node_modules/
