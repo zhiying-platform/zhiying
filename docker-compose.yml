@@ -1,0 +1,48 @@
+# 知映 zhiying — 本地依赖编排（PostgreSQL + pgvector / Redis）
+# 端口与命名约定对齐 gewu 项目（D:\projectMenu\gewu\.env）
+# 用法：
+#   cp .env.example .env
+#   docker compose up -d
+#   首次建表：python -m zhiying.storage.init_db
+
+services:
+  zhiying-postgres:
+    image: pgvector/pgvector:pg18
+    container_name: zhiying-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${ZHIYING_DB_NAME:-zhiying}
+      POSTGRES_USER: ${ZHIYING_DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${ZHIYING_DB_PASSWORD:?请在 .env 中设置 ZHIYING_DB_PASSWORD}
+      # 中文排序与编码
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    ports:
+      # 宿主机端口（与 gewu 的 15432 对齐，避免占本机 5432）
+      - "${ZHIYING_DB_PORT:-15432}:5432"
+    volumes:
+      - zhiying-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${ZHIYING_DB_USER:-postgres} -d ${ZHIYING_DB_NAME:-zhiying}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  zhiying-redis:
+    image: redis:7-alpine
+    container_name: zhiying-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      # 与 gewu 的 16379 对齐
+      - "${ZHIYING_REDIS_PORT:-16379}:6379"
+    volumes:
+      - zhiying-redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  zhiying-pgdata:
+  zhiying-redisdata:

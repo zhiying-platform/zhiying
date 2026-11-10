@@ -1,0 +1,22 @@
+# 知映 zhiying — 运行依赖（V0.1）
+
+# 下载引擎
+yt-dlp>=2026.10.26
+
+# 配置解析
+PyYAML>=6.0
+
+# HTTP（图床/模型 API/下载）
+requests>=2.31
+
+# ffmpeg 二进制（免系统安装；也可用系统 ffmpeg，见 zhiying.tools.ffmpeg）
+imageio-ffmpeg>=0.5
+
+# 第三级转写保底（本地 Whisper）
+faster-whisper>=1.2.1
+
+# 关键帧场景检测
+scenedetect>=0.7.3
+
+# PostgreSQL（B6 契约预置；V0.2 入库）
+psycopg[binary]>=3.3
