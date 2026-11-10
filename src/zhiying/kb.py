@@ -264,6 +264,20 @@ def _is_noise(s: str) -> bool:
 # ------------------------------------------------------------------ 检索
 
 
+def deep_link(video_id: str, ts: float) -> str | None:
+    """视频深链（带时间点）；本地文件/未知来源返回 None。
+
+    B站：?t=秒；YouTube：&t=秒s。前端引用跳转与知识库卡片共用。
+    """
+    if not video_id:
+        return None
+    if video_id.startswith("BV"):
+        return f"https://www.bilibili.com/video/{video_id}/?t={int(ts)}"
+    if re.fullmatch(r"[A-Za-z0-9_-]{11}", video_id):
+        return f"https://www.youtube.com/watch?v={video_id}&t={int(ts)}s"
+    return None
+
+
 def search(query: str, top_k: int = 5) -> list[dict]:
     """向量检索为主，tsvector 全文为辅（jieba），加权混合。"""
     import psycopg
@@ -276,7 +290,7 @@ def search(query: str, top_k: int = 5) -> list[dict]:
         with conn.cursor() as cur:
             # 向量检索（cosine）
             cur.execute(
-                """SELECT c.id, c.video_id, v.title, c.start_ts, c.end_ts, c.text,
+                """SELECT c.id, c.video_id, v.title, v.source, c.start_ts, c.end_ts, c.text,
                        c.embedding <=> %s::vector AS dist
                    FROM chunks c JOIN videos v ON v.id = c.video_id
                    WHERE c.embedding IS NOT NULL
@@ -287,13 +301,14 @@ def search(query: str, top_k: int = 5) -> list[dict]:
             for row in cur.fetchall():
                 out.append({
                     "chunk_id": row[0], "video_id": row[1], "title": row[2],
-                    "start_ts": float(row[3]), "end_ts": float(row[4]), "text": row[5],
-                    "score": round(1 - float(row[6]), 4), "source": "vector",
+                    "source": row[3],
+                    "start_ts": float(row[4]), "end_ts": float(row[5]), "text": row[6],
+                    "score": round(1 - float(row[7]), 4), "source_kind": "vector",
                 })
             # 全文辅助（tsvector + jieba 分词）
             if q_seg:
                 cur.execute(
-                    """SELECT c.id, c.video_id, v.title, c.start_ts, c.end_ts, c.text,
+                    """SELECT c.id, c.video_id, v.title, v.source, c.start_ts, c.end_ts, c.text,
                            ts_rank(c.tsv, to_tsquery('simple', %s)) AS rank
                        FROM chunks c JOIN videos v ON v.id = c.video_id
                        WHERE c.tsv @@ to_tsquery('simple', %s)
@@ -303,8 +318,9 @@ def search(query: str, top_k: int = 5) -> list[dict]:
                 for row in cur.fetchall():
                     out.append({
                         "chunk_id": row[0], "video_id": row[1], "title": row[2],
-                        "start_ts": float(row[3]), "end_ts": float(row[4]), "text": row[5],
-                        "score": round(float(row[6]), 4), "source": "fulltext",
+                        "source": row[3],
+                        "start_ts": float(row[4]), "end_ts": float(row[5]), "text": row[6],
+                        "score": round(float(row[7]), 4), "source_kind": "fulltext",
                     })
     # 合并去重（同 chunk 取高分）
     seen: dict[int, dict] = {}
