@@ -154,7 +154,7 @@ def extract_uniform_frames(video_id: str, max_frames: int = 40, precision: str =
 
 
 def _probe_duration(src: Path) -> float:
-    """WAV 用 wave；视频用 ffmpeg 解码估算（降级路径）。"""
+    """WAV 用 wave；视频用 OpenCV（scenedetect 已依赖 cv2，零新增依赖）。"""
     if src.suffix.lower() == ".wav":
         import wave
 
@@ -164,6 +164,20 @@ def _probe_duration(src: Path) -> float:
                 return w.getnframes() / rate if rate else 0.0
         except Exception:  # noqa: BLE001
             return 0.0
+    # 视频：cv2 读帧数/帧率（本地上传视频无 info.json，duration 需探针）
+    try:
+        import cv2
+
+        cap = cv2.VideoCapture(str(src))
+        try:
+            frames = cap.get(cv2.CAP_PROP_FRAME_COUNT)
+            fps = cap.get(cv2.CAP_PROP_FPS)
+            if frames and fps and fps > 0:
+                return float(frames) / float(fps)
+        finally:
+            cap.release()
+    except Exception:  # noqa: BLE001
+        pass
     return 0.0
 
 

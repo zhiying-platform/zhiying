@@ -198,6 +198,7 @@ def sensevoice_transcribe(video_id: str) -> Path | None:
 
     seg_dir = audio_dir(video_id) / "segs"
     seg_dir.mkdir(exist_ok=True)
+    ff = resolve_ffmpeg()
     # 60s 切片
     slice_len = 60
     out = transcript_dir(video_id) / "transcript.jsonl"
@@ -288,6 +289,11 @@ def whisper_transcribe(video_id: str) -> Path | None:
 
 def transcribe(video_id: str) -> dict:
     """三级降级编排，返回 {"level": ..., "path": ...}。"""
+    # 幂等：已有转写产物直接复用（retry/重跑不重复调转写 API）
+    existing = transcript_dir(video_id) / "transcript.jsonl"
+    if existing.exists() and existing.stat().st_size > 0:
+        return {"level": "cached", "path": str(existing)}
+
     meta = load_meta(video_id)
     # 第一级：平台字幕
     sub = fetch_platform_subtitle(video_id)
