@@ -19,6 +19,34 @@ from zhiying.envkeys import getenv
 # ------------------------------------------------------------------ 连接与配置
 
 
+def delete_video_data(video_id: str) -> dict:
+    """删除视频全部数据（任务管理 DR-25）：KB 行（级联 segments/chunks）+ 工作目录。
+
+    幂等：KB 无行、目录不存在均视为删除成功。返回删除详情供 UI 提示。
+    """
+    import shutil
+
+    import psycopg
+
+    from zhiying.paths import video_dir as _video_dir
+
+    kb_deleted = False
+    try:
+        with psycopg.connect(**db_conn_kwargs()) as conn:
+            cur = conn.execute("DELETE FROM videos WHERE id = %s", (video_id,))
+            kb_deleted = cur.rowcount > 0
+            conn.commit()
+    except Exception:  # noqa: BLE001  KB 不可达时仍继续删目录
+        pass
+
+    d = _video_dir(video_id)
+    dir_deleted = False
+    if d.exists():
+        shutil.rmtree(d, ignore_errors=True)
+        dir_deleted = not d.exists()
+    return {"kb_deleted": kb_deleted, "dir_deleted": dir_deleted}
+
+
 def db_conn_kwargs() -> dict:
     import psycopg
 

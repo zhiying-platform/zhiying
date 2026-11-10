@@ -101,6 +101,14 @@ def _pipeline(video_id: str, quality: str, src: str | None = None, precision: st
         except Exception as e:  # noqa: BLE001  入库失败不影响任务完成（可手动重跑 ingest）
             kb_note = f"; 入库异常: {str(e)[:80]}"
 
+        # 上传副本清理（DR-25）：incoming 的源文件已拷入 videos/<id>/source/，副本无用
+        try:
+            incoming_root = Path(data_root() / "incoming").resolve()
+            if source and Path(source).resolve().is_relative_to(incoming_root):
+                Path(source).unlink(missing_ok=True)
+        except Exception:  # noqa: BLE001
+            pass
+
         set_stage(video_id, "done", detail=f"A1={r['segments']}段; 摘要={s.get('path', '')}{kb_note}")
     except Exception as e:  # noqa: BLE001
         set_stage(video_id, "failed", error=f"{type(e).__name__}: {str(e)[:200]}")

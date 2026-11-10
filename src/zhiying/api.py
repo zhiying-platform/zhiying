@@ -153,20 +153,52 @@ async def upload_video(
     return {"task_id": vid, "file": str(dst), "stage": "queued", "content_hash": content_hash}
 
 
+@app.delete("/api/tasks/{video_id}")
+def delete_task(video_id: str) -> dict:
+    """删除视频全部数据（任务管理，DR-25）：KB 行（级联）+ 工作目录 + 在途任务表项。"""
+    from zhiying.kb import delete_video_data
+
+    if not load_meta(video_id) and not (data_root() / "videos" / video_id).exists():
+        raise HTTPException(status_code=404, detail="任务不存在")
+    with _lock:
+        _jobs.pop(video_id, None)
+    r = delete_video_data(video_id)
+    return {"deleted": True, **r}
+
+
+_RUN_STAGES = ("queued", "downloading", "transcribing", "visual", "summarizing")
+
+
 @app.get("/api/tasks")
-def list_tasks() -> dict:
+def list_tasks(stage_filter: str = "all") -> dict:
+    """任务列表；stage_filter 状态筛选（DR-25）：all|running|done|failed|pending。"""
+    from zhiying.pipeline import get_task as _get_task
+
     vdir = data_root() / "videos"
     out = []
     if vdir.exists():
-        for m in sorted(vdir.glob("*/meta.json")):
+        for m in sorted(vdir.glob("*/meta.json"), key=lambda x: x.stat().st_mtime, reverse=True):
             vid = m.parent.name
             meta = load_meta(vid)
-            task = get_task(vid)
+            task = _get_task(vid)
+            stage = (task or {}).get("stage", "-")
+            if stage == "-" and (video_dir(vid) / "summary.json").exists():
+                stage = "done"  # 无任务记录的历史视频：从产物推断
+            # 状态筛选（DR-25；注意不要用循环变量 stage 当筛选条件——参数遮蔽事故）
+            if stage_filter == "running" and stage not in _RUN_STAGES:
+                continue
+            if stage_filter == "done" and stage != "done":
+                continue
+            if stage_filter == "failed" and stage != "failed":
+                continue
+            if stage_filter == "pending" and stage not in ("queued", "-"):
+                continue
             out.append({
                 "video_id": vid,
                 "title": meta.title if meta else "",
                 "status": meta.status if meta else "",
-                "stage": (task or {}).get("stage", "-"),
+                "stage": stage,
+                "error": (task or {}).get("error", ""),
             })
     return {"tasks": out}
 
