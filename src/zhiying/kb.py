@@ -80,6 +80,21 @@ def zh_segment(text: str) -> str:
 # ------------------------------------------------------------------ 入库
 
 
+def find_video_by_hash(content_hash: str) -> tuple[str, str] | None:
+    """按内容哈希查已入库视频，返回 (video_id, status) 或 None。"""
+    import psycopg
+
+    try:
+        with psycopg.connect(**db_conn_kwargs()) as conn:
+            row = conn.execute(
+                "SELECT id, status FROM videos WHERE content_hash = %s ORDER BY created_at DESC LIMIT 1",
+                (content_hash,),
+            ).fetchone()
+            return (row[0], row[1]) if row else None
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def ingest_video(video_id: str, force: bool = False) -> dict:
     """把 V0.1 产物入库：videos 元数据 + segments 逐段 + chunks 合并向量化。"""
     import psycopg
@@ -116,12 +131,12 @@ def ingest_video(video_id: str, force: bool = False) -> dict:
             cur.execute("DELETE FROM segments WHERE video_id=%s", (video_id,))
             cur.execute(
                 """INSERT INTO videos (id, source_type, source, title, uploader, duration, status,
-                       summary_text, topics, pipeline_version, transcribe_origin, vlm_provider, text_model)
-                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                       summary_text, topics, pipeline_version, transcribe_origin, vlm_provider, text_model, content_hash)
+                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                        ON CONFLICT (id) DO UPDATE SET
                          title=EXCLUDED.title, uploader=EXCLUDED.uploader, duration=EXCLUDED.duration,
                          status=EXCLUDED.status, summary_text=EXCLUDED.summary_text,
-                         topics=EXCLUDED.topics, updated_at=now()""",
+                         topics=EXCLUDED.topics, content_hash=EXCLUDED.content_hash, updated_at=now()""",
                 (
                     video_id,
                     meta.source_type if meta else "unknown",
@@ -136,6 +151,7 @@ def ingest_video(video_id: str, force: bool = False) -> dict:
                     rows[0].get("speech_origin", ""),
                     os.environ.get("ZHIYING_VLM_PROVIDER", "siliconflow"),
                     summary.get("generated_by", ""),
+                    meta.content_hash if meta else "",
                 ),
             )
             # segments

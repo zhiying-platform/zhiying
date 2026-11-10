@@ -46,6 +46,7 @@ class VideoMeta:
     status: str = "pending"  # pending|downloading|done|failed
     error: str = ""
     extra: dict = field(default_factory=dict)
+    content_hash: str = ""  # 文件级 SHA256（上传去重，DR-23）
 
 
 def detect_source(src: str) -> tuple[str, str]:
@@ -181,6 +182,7 @@ def download(src: str, quality: str = "1080", force: bool = False) -> VideoMeta:
         dst = source_dir(vid) / p.name
         shutil.copy2(p, dst)
         meta.local_path, meta.filesize, meta.status = str(dst), dst.stat().st_size, "done"
+        meta.content_hash = file_sha256(dst)  # 上传去重（DR-23）
         meta.downloaded_at = _now()
         _save_meta(mp, meta)
         return meta
@@ -212,6 +214,15 @@ def download(src: str, quality: str = "1080", force: bool = False) -> VideoMeta:
 
 def _save_meta(path: Path, meta: VideoMeta) -> None:
     path.write_text(json.dumps(asdict(meta), ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def file_sha256(path: Path, chunk_size: int = 1024 * 1024) -> str:
+    """文件级 SHA256（流式分块，支持大文件；上传去重用，DR-23）。"""
+    h = hashlib.sha256()
+    with path.open("rb") as f:
+        while chunk := f.read(chunk_size):
+            h.update(chunk)
+    return h.hexdigest()
 
 
 def backfill_meta(video_id: str) -> VideoMeta | None:

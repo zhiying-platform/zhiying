@@ -92,7 +92,16 @@ def _pipeline(video_id: str, quality: str, src: str | None = None, precision: st
             set_stage(video_id, "failed", error=str(s.get("reason")))
             return
 
-        set_stage(video_id, "done", detail=f"A1={r['segments']}段; 摘要={s.get('path', '')}")
+        # 知识库自动入库（V0.2 产物闭环；同时写入 content_hash 供上传去重，DR-23）
+        try:
+            from zhiying.kb import ingest_video as kb_ingest
+
+            kb_r = kb_ingest(video_id)
+            kb_note = f"; 入库={kb_r.get('chunks', '?')}chunks" if kb_r.get("ok") else f"; 入库失败: {kb_r.get('reason', '')[:80]}"
+        except Exception as e:  # noqa: BLE001  入库失败不影响任务完成（可手动重跑 ingest）
+            kb_note = f"; 入库异常: {str(e)[:80]}"
+
+        set_stage(video_id, "done", detail=f"A1={r['segments']}段; 摘要={s.get('path', '')}{kb_note}")
     except Exception as e:  # noqa: BLE001
         set_stage(video_id, "failed", error=f"{type(e).__name__}: {str(e)[:200]}")
 

@@ -13,6 +13,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import threading
 from pathlib import Path
 
@@ -96,9 +97,14 @@ async def upload_video(
 ) -> dict:
     """上传本地视频并创建处理任务（一步到位：落盘 + 建任务）。
 
-    流式写盘（1MB 分块），支持大文件；同名文件自动加时间戳后缀。
+    流式写盘（1MB 分块）+ 流式 SHA256；同名文件自动加时间戳后缀。
+    内容级去重（DR-23）：同内容文件（SHA256 相同）若已入库或在途，返回 409 + 既有 task_id，
+    不会重复处理（尤其不会重复帧检测与 VLM 调用）。
     """
     from datetime import datetime
+
+    from zhiying.download import file_sha256
+    from zhiying.kb import find_video_by_hash
 
     incoming = data_root() / "incoming"
     incoming.mkdir(parents=True, exist_ok=True)
@@ -107,20 +113,34 @@ async def upload_video(
     if dst.exists():
         stamp = datetime.now().strftime("%Y%m%d%H%M%S")
         dst = incoming / f"{Path(orig_name).stem}_{stamp}{Path(orig_name).suffix}"
+    sha = hashlib.sha256()
     try:
         with dst.open("wb") as f:
             while chunk := await file.read(1024 * 1024):
                 f.write(chunk)
+                sha.update(chunk)  # 写盘同时算哈希，免二次读盘
     except Exception as e:  # noqa: BLE001
         dst.unlink(missing_ok=True)
         raise HTTPException(status_code=500, detail=f"保存上传文件失败: {e}") from e
     if dst.stat().st_size == 0:
         dst.unlink(missing_ok=True)
         raise HTTPException(status_code=400, detail="上传文件为空")
+    content_hash = sha.hexdigest()
+
+    # 内容级去重（DR-23）：先查在途任务，再查已入库
+    _st, vid_by_hash = detect_source(str(dst))
+    duplicate = find_video_by_hash(content_hash)
+    if duplicate:
+        dst.unlink(missing_ok=True)  # 重复文件直接丢弃，零处理
+        raise HTTPException(
+            status_code=409,
+            detail={"task_id": duplicate[0], "stage": duplicate[1], "reason": "duplicate_content"},
+        )
 
     _st, vid = detect_source(str(dst))
     existing = get_task(vid)
     if existing and existing.get("stage") in ("queued", "downloading", "transcribing", "visual", "summarizing"):
+        dst.unlink(missing_ok=True)
         raise HTTPException(status_code=409, detail={"task_id": vid, "stage": existing.get("stage")})
     meta = load_meta(vid)
     if meta and meta.status == "done" and (video_dir(vid) / "summary.json").exists() and vid not in _jobs:
@@ -130,7 +150,7 @@ async def upload_video(
     with _lock:
         _jobs[vid] = t
     t.start()
-    return {"task_id": vid, "file": str(dst), "stage": "queued"}
+    return {"task_id": vid, "file": str(dst), "stage": "queued", "content_hash": content_hash}
 
 
 @app.get("/api/tasks")
