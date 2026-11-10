@@ -10,7 +10,7 @@
 
 - 🎬 **多源接入**：B站 / YouTube / 本地文件；1080p 默认，断点续传，失败片段级重跑
 - 🎙️ **三级转写降级**：平台字幕 → 硅基流动 SenseVoiceSmall → 本地 Whisper（自动降级，保底可用）
-- 👁️ **VLM 画面识别**：看懂 PPT / 代码 / 图表，OCR 屏幕文字（适配器架构：SiliconFlow Qwen3-VL 默认可用，LongCat-2.5 一键切换）
+- 👁️ **VLM 画面识别**：看懂 PPT / 代码 / 图表，OCR 屏幕文字（适配器架构：LongCat-2.5 默认首选，SiliconFlow Qwen3-VL 备选，只改配置切换）
 - 🕐 **时间戳溯源**：口播、画面事实、屏幕文字全部挂时间轴，答案可回跳原视频对应位置
 - 📦 **双形态产物**：人读的 `multimodal_transcript.md` + 机器可读的 `transcript.multimodal.jsonl`（同源生成，不分叉）
 - 🗄️ **知识库契约已冻结**：PostgreSQL + pgvector 表结构 V1（videos / segments / chunks），V0.2 实现检索问答

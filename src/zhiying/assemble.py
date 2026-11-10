@@ -7,6 +7,7 @@
     → 文本 LLM 摘要 → A3（summary.json：摘要 + 主题标签 + 可溯源要点）
 
 A1 双形态由同一数据源生成，不允许手工分叉（PRD §5.4）。
+文本 LLM 走 llm.chat_text（DR-14：默认 LongCat，一个 Key 覆盖全部模型调用）。
 """
 
 from __future__ import annotations
@@ -203,35 +204,10 @@ def assemble(video_id: str, max_frames: int = 20) -> dict:
 
 
 def _text_llm(messages: list[dict], max_tokens: int = 1200) -> str:
-    """文本 LLM 调用（与 VLM 同供应商，一个 Key 覆盖，FR-204 一致）。
+    """文本 LLM 统一入口（llm.chat_text：DR-14 默认 LongCat，重试内置）。"""
+    from zhiying.llm import chat_text
 
-    免费档 503/超时波动：自动重试 2 次（5s/15s 退避）。
-    """
-    import time
-
-    key = getenv("SILICONFLOW_API_KEY")
-    if not key:
-        raise RuntimeError("未配置 SILICONFLOW_API_KEY")
-    model = os.environ.get("ZHIYING_TEXT_MODEL", "Qwen/Qwen3.5-9B")
-    last_err = ""
-    for attempt in range(3):
-        try:
-            r = requests.post(
-                "https://api.siliconflow.cn/v1/chat/completions",
-                headers={"Authorization": f"Bearer {key.strip()}", "Content-Type": "application/json"},
-                json={"model": model, "messages": messages, "max_tokens": max_tokens, "temperature": 0.3},
-                timeout=180,
-            )
-            if r.status_code == 200:
-                return r.json()["choices"][0]["message"]["content"]
-            last_err = f"HTTP {r.status_code}: {r.text[:200]}"
-            if r.status_code not in (429, 500, 502, 503, 504):
-                break  # 非瞬时错误不重试
-        except requests.RequestException as e:
-            last_err = str(e)[:200]
-        if attempt < 2:
-            time.sleep(5 * (attempt + 1))
-    raise RuntimeError(f"文本 LLM 失败（重试后）：{last_err}")
+    return chat_text(messages, max_tokens=max_tokens)
 
 
 def summarize(video_id: str, force: bool = False) -> dict:
@@ -283,7 +259,10 @@ def summarize(video_id: str, force: bool = False) -> dict:
         "summary_text": data.get("summary_text", raw[:500]),
         "topics": data.get("topics", []),
         "key_points": data.get("key_points", []),
-        "generated_by": os.environ.get("ZHIYING_TEXT_MODEL", "Qwen/Qwen3.5-9B"),
+        "generated_by": (os.environ.get("ZHIYING_TEXT_PROVIDER", "longcat") + ":" +
+                         (os.environ.get("ZHIYING_LONGCAT_MODEL", "LongCat-2.5")
+                          if os.environ.get("ZHIYING_TEXT_PROVIDER", "longcat") == "longcat"
+                          else os.environ.get("ZHIYING_TEXT_MODEL", "Qwen/Qwen3.5-9B"))),
     }
     p = video_dir(video_id) / "summary.json"
     p.write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")

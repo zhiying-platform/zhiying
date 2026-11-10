@@ -1,7 +1,7 @@
 """RAG 问答（FR-204 / 产物 A4）。
 
-答案生成 LLM 与 VLM 同供应商（一个 Key，FR-204），答案强制带来源引用；
-无据可答时明确说明，不编造。
+答案生成走 llm.chat_text（DR-14：默认 LongCat，与 VLM 同 Key 覆盖）；
+答案强制带来源引用；无据可答时明确说明，不编造。
 """
 
 from __future__ import annotations
@@ -50,21 +50,17 @@ def ask(question: str, top_k: int = 5) -> dict:
 
 如果内容不足以回答，answer_text 写「知识库中无依据」并将 citations 置空。"""
 
-    key = getenv("SILICONFLOW_API_KEY")
-    if not key:
-        raise RuntimeError("未配置 SILICONFLOW_API_KEY")
-    model = os.environ.get("ZHIYING_TEXT_MODEL", "Qwen/Qwen3.5-9B")
-    r = requests.post(
-        "https://api.siliconflow.cn/v1/chat/completions",
-        headers={"Authorization": f"Bearer {key.strip()}", "Content-Type": "application/json"},
-        json={"model": model, "messages": [{"role": "user", "content": prompt}], "max_tokens": 800, "temperature": 0.2},
-        timeout=180,
-    )
-    if r.status_code != 200:
-        raise RuntimeError(f"问答 LLM HTTP {r.status_code}: {r.text[:200]}")
+    from zhiying.llm import chat_text
 
-    raw = r.json()["choices"][0]["message"]["content"]
+    raw = chat_text([{"role": "user", "content": prompt}], max_tokens=2000, temperature=0.2)
+    # 注意：max_tokens 必须 ≥2000——LongCat 输出的完整 JSON（答案+3 条引用）超 800；
+    # 截断会导致内层 JSON 解析失败回退到原文（实测事故）
     data = _parse_json(raw)
+    # 容错：模型可能把 JSON 嵌套在字符串字段里（双层编码，与 assemble 同款问题）
+    if "answer_text" in data and isinstance(data["answer_text"], str) and data["answer_text"].strip().startswith("{"):
+        inner = _parse_json(data["answer_text"])
+        if inner and inner.get("answer_text"):
+            data = inner
 
     citations = data.get("citations") or []
     # 强制溯源校验：每条引用补齐 video_id（从 hits 里匹配标题）

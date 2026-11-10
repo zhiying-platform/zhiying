@@ -67,6 +67,44 @@ def _longcat_config() -> tuple[str, str, str]:
     return base.rstrip("/"), model, key.strip()
 
 
+def describe_frame_longcat(frame_path: Path, prompt: str) -> str:
+    """LongCat-2.5 视觉调用（base64 内联，无需图床；DR-14 首选）。
+
+    实测（2026-11-10 Key 激活后）：
+    - 支持 data:image 内联（文章所述仅 URL 传图已过时）
+    - 思考型模型：max_tokens 会被 reasoning_tokens 吃光导致 content 为空
+      → 必须 enable_thinking=false（实测生效，content 117 字含双语 OCR）
+    """
+    base, model, key = _longcat_config()
+    b64 = base64.b64encode(Path(frame_path).read_bytes()).decode()
+    resp = requests.post(
+        f"{base}/chat/completions",
+        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+        json={
+            "model": model,
+            "enable_thinking": False,  # 关键：关闭思考模式，否则 content 为空
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}},
+                        {"type": "text", "text": prompt},
+                    ],
+                }
+            ],
+            "max_tokens": 800,
+        },
+        timeout=180,
+    )
+    if resp.status_code != 200:
+        raise VLMError(f"LongCat HTTP {resp.status_code}: {resp.text[:300]}")
+    data = resp.json()
+    try:
+        return data["choices"][0]["message"]["content"]
+    except (KeyError, IndexError) as e:
+        raise VLMError(f"LongCat 响应结构异常: {e}: {str(data)[:300]}") from e
+
+
 def describe_frame_siliconflow(frame_path: Path, prompt: str) -> str:
     """硅基流动视觉调用（Qwen-VL 系，base64 内联，无需图床）。
 
@@ -109,19 +147,18 @@ def describe_frame_siliconflow(frame_path: Path, prompt: str) -> str:
 
 
 def describe_frame(frame_path: Path, prompt: str | None = None) -> str:
-    """统一入口：按 ZHIYING_VLM_PROVIDER 分发（siliconflow|longcat）。
+    """统一入口：按 ZHIYING_VLM_PROVIDER 分发（longcat|siliconflow）。
 
-    DR-14 拍板 LongCat-2.5 为首选，但实测其 Key 未激活（108 变体穷举全 401）；
-    SiliconFlow Qwen3-VL 已实测可用，故默认配置指向 siliconflow，
-    LongCat Key 激活后改 ZHIYING_VLM_PROVIDER=longcat 即可切换（FR-105 只改配置）。
+    DR-14 首选 LongCat-2.5；2026-11-10 Key 激活且 enable_thinking=false 打通后
+    默认指向 longcat；SiliconFlow Qwen3-VL 保持为可用备选。
     """
-    provider = os.environ.get("ZHIYING_VLM_PROVIDER", "siliconflow")
+    provider = os.environ.get("ZHIYING_VLM_PROVIDER", "longcat")
     prompt = prompt or (
         "请详细描述这张视频截图中的所有可见信息：画面场景、屏幕文字（OCR）、"
         "人物动作、图表/PPT/代码内容（如有）。用中文简洁输出。"
     )
-    if provider == "siliconflow":
-        return describe_frame_siliconflow(Path(frame_path), prompt)
     if provider == "longcat":
         return describe_frame_longcat(Path(frame_path), prompt)
+    if provider == "siliconflow":
+        return describe_frame_siliconflow(Path(frame_path), prompt)
     raise VLMError(f"未知 VLM provider: {provider}")
