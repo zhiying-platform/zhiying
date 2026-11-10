@@ -1,4 +1,6 @@
-# 知映 zhiying — 运行依赖（V0.1）
+# 知映 zhiying — 运行依赖
+
+# ---- V0.1 管道 ----
 
 # 下载引擎
 yt-dlp>=2026.10.26
@@ -18,5 +20,17 @@ faster-whisper>=1.2.1
 # 关键帧场景检测
 scenedetect>=0.7.3
 
-# PostgreSQL（B6 契约预置；V0.2 入库）
+# ---- V0.2 知识库与服务 ----
+
+# PostgreSQL（入库/检索）
 psycopg[binary]>=3.3
+
+# 中文分词（tsvector 全文检索辅助）
+jieba>=0.42
+
+# FastAPI 服务层
+fastapi>=0.160
+uvicorn[standard]>=0.54
+
+# MCP Server（Agent 接入层，FR-305）
+mcp>=2.3

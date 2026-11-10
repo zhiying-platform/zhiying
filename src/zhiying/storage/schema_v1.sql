@@ -63,12 +63,14 @@ CREATE TABLE IF NOT EXISTS chunks (
     end_ts      DOUBLE PRECISION NOT NULL,           -- 合并窗口终点
     text        TEXT NOT NULL,                       -- 合并后文本（口播+画面要点）
     modality    TEXT NOT NULL DEFAULT 'mixed',       -- speech|visual|mixed
-    embedding   vector(1024),                        -- Qwen3-Embedding-8B 维度；V0.2 填充
+    embedding   vector(1024),                        -- BAAI/bge-m3 实测 1024 维；V0.2 填充
+    tsv         tsvector,                            -- 全文检索（应用侧 jieba 分词后写入）
     token_count INTEGER NOT NULL DEFAULT 0,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE (video_id, chunk_index)
 );
 CREATE INDEX IF NOT EXISTS idx_chunks_video ON chunks(video_id);
+CREATE INDEX IF NOT EXISTS idx_chunks_tsv ON chunks USING gin (tsv);
 -- 向量索引：V0.2 数据填充后按规模选 HNSW/IVFFlat，此处先留普通索引位
 -- CREATE INDEX IF NOT EXISTS idx_chunks_embedding ON chunks USING hnsw (embedding vector_cosine_ops);
 

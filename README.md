@@ -4,7 +4,7 @@
 
 输入视频链接（B站 / YouTube / 本地文件），自动完成 **下载 → 语音转写 → 画面识别 → 多模态文案对齐 → 结构化摘要**，产出可入库、可检索、答案可回跳原视频时间点的知识资产。
 
-> **当前版本：V0.1（CLI 最小闭环）** — 产品规划见 [docs/PRD.md](docs/PRD.md)，实施记录见 [docs/plan/V0.1-PLAN.md](docs/plan/V0.1-PLAN.md)。
+> **当前版本：V0.2（知识库与服务层）** — 产品规划见 [docs/PRD.md](docs/PRD.md)，实施记录见 [docs/plan/V0.1-PLAN.md](docs/plan/V0.1-PLAN.md)。
 
 ## 特性
 
@@ -60,12 +60,43 @@ python -m zhiying open      BVxxxx     # 打开产物目录
 python -m zhiying retry     BVxxxx     # 从失败阶段重跑
 ```
 
-### 5. 知识库（可选，B6 契约预置）
+### 5. 知识库与服务（V0.2）
 
 ```bash
-# 需本机 PostgreSQL 18（自带 pgvector）；连接参数读 .env（ZHIYING_DB_*）
+# 数据库（pgvector + Redis）
+docker compose up -d
+
+# 首次建表（schema + 迁移，幂等）
 .venv\Scripts\python -m zhiying.storage.init_db
+.venv\Scripts\python -m zhiying.storage.migrate
+
+# 启动 API 服务
+.venv\Scripts\python -m zhiying.api        # http://127.0.0.1:8600  (docs: /docs)
 ```
+
+API 端点：
+| 端点 | 说明 |
+|---|---|
+| `POST /api/tasks` | 提交处理任务（202；已完成/处理中返回 409 + 既有 task_id，幂等） |
+| `GET /api/tasks` · `GET /api/tasks/{id}` | 任务列表/详情 |
+| `POST /api/search` | 知识库检索（向量 + 全文混合，带时间戳） |
+| `POST /api/ask` | RAG 问答（答案强制带引用，无据可答显式声明） |
+| `GET /api/videos` | 知识库视频清单（含摘要与主题标签） |
+
+### 6. Agent 接入（V0.2 MCP）
+
+启动 MCP Server（stdio 传输，薄包装 REST API）：
+
+```bash
+.venv\Scripts\python -m zhiying.mcp
+```
+
+暴露 5 个工具：`zhiying_ingest` / `zhiying_task_status` / `zhiying_search` / `zhiying_ask` / `zhiying_list_videos`
+
+接入方式：
+- **OpenClaw**：MCP 客户端配置（对话里直接丢视频链接、提问）
+- **Claude Code**：`claude mcp add zhiying -- python -m zhiying.mcp`
+- **Codex**：`config.toml` 的 `mcp_servers.zhiying`
 
 ## 产物结构
 
@@ -102,8 +133,8 @@ ingest → download（yt-dlp 封装）
 
 | 版本 | 内容 | 状态 |
 |---|---|---|
-| V0.1 | CLI 最小闭环（单条视频端到端） | ✅ 当前 |
-| V0.2 | 知识库入库 + 检索 + FastAPI + RAG 问答 + MCP 接入 | 规划中 |
+| V0.1 | CLI 最小闭环（单条视频端到端） | ✅ 已完成 |
+| V0.2 | 知识库入库 + 检索 + FastAPI + RAG 问答 + MCP 接入 | ✅ 当前 |
 | V0.3 | Web 前端（任务台 / 知识库浏览 / 问答界面） | 规划中 |
 | V1.0 | 产品化（触发条件制） | 规划中 |
 
