@@ -25,3 +25,8 @@ Thumbs.db
 
 # ---- 前端已拆至独立仓 zhiying-web（DR-21）----
 node_modules/
+
+# ---- 打包产物（python -m build）----
+build/
+dist/
+*.egg-info/
