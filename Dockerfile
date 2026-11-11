@@ -18,8 +18,28 @@ RUN pip install --no-cache-dir --prefix=/install .
 
 FROM python:3.12-slim AS runtime
 
+# 国内网络：runtime 阶段的 headless 重装也需要镜像源（DR-40 v3）
+ARG PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
+ARG PIP_TRUSTED_HOST=pypi.tuna.tsinghua.edu.cn
+ENV PIP_INDEX_URL=${PIP_INDEX_URL} \
+    PIP_TRUSTED_HOST=${PIP_TRUSTED_HOST} \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
 # 安装产物（包 + console scripts: zhiying / zhiying-api / zhiying-mcp）
 COPY --from=builder /install /usr/local
+
+# ---- 瘦身（DR-40 v3：实测 1.13GB → 目标 ~950MB，opencv 双装修复）----
+# 根因：scenedetect 依赖链在 headless 之后又装入 GUI 版 opencv-python，
+# 两者共用 cv2/ 目录 → cv2.abi3.so 被 GUI 链接版覆盖（依赖 Qt5 全家桶 116MB）。
+# 方案：卸载 GUI 版（其 .libs 随卸载移除）→ 强制重装 headless（恢复不链 Qt 的 cv2）。
+# v1 失败教训：只删 GUI .libs 目录会连 headless cv2 依赖的公共 so（libopenblas 等）
+# 一起断掉，cv2 无法导入。
+RUN OPENCV_VER=$(pip show opencv-python-headless 2>/dev/null | grep '^Version' | cut -d' ' -f2) \
+    && pip uninstall -y opencv-python \
+    && pip install --no-cache-dir --force-reinstall --no-deps "opencv-python-headless==${OPENCV_VER:-5.0.0.93}" \
+    && find /usr/local -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null; \
+    find /usr/local -name "*.pyc" -delete 2>/dev/null; \
+    true
 
 WORKDIR /app
 
