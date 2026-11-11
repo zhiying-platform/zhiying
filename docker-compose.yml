@@ -1,11 +1,68 @@
-# 知映 zhiying — 本地依赖编排（PostgreSQL + pgvector / Redis）
-# 端口与命名约定对齐 gewu 项目（D:\projectMenu\gewu\.env）
-# 用法：
-#   cp .env.example .env
-#   docker compose up -d
-#   首次建表：python -m zhiying.storage.init_db
+# 知映 zhiying — 产品化编排（V1.0）
+# 一条命令起全套：docker compose up -d
+#   - zhiying-server : 后端 API + 前端静态托管（8600）
+#   - zhiying-postgres: PostgreSQL + pgvector（15432）
+#   - zhiying-redis   : Redis（16379，V0.3 任务队列预留）
+#
+# 首次部署：
+#   1) cp .env.example .env  并填入 ZHIYING_DB_PASSWORD / SILICONFLOW_API_KEY / LONGCAT_API_KEY
+#   2) cd ../zhiying-web && npm ci && npm run build    # 生成 web/dist
+#   3) docker compose up -d
+#   4) docker compose exec zhiying-server zhiying-mcp --help  # 验证镜像内工具
+#   5) 首次建表：docker compose exec zhiying-server python -m zhiying.storage.init_db
+#                docker compose exec zhiying-server python -m zhiying.storage.migrate
+#   6) 浏览器打开 http://127.0.0.1:8600
 
 services:
+  zhiying-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        # 国内网络加速；海外部署可覆盖为官方源
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.tuna.tsinghua.edu.cn/simple}
+        PIP_TRUSTED_HOST: ${PIP_TRUSTED_HOST:-pypi.tuna.tsinghua.edu.cn}
+    image: zhiying/server:${ZHIYING_VERSION:-0.3.0}
+    container_name: zhiying-server
+    restart: unless-stopped
+    depends_on:
+      zhiying-postgres:
+        condition: service_healthy
+    environment:
+      # 容器内必须监听 0.0.0.0 才能被宿主机访问
+      ZHIYING_API_HOST: 0.0.0.0
+      ZHIYING_API_PORT: 8600
+      # 数据库指向 compose 内的服务名（覆盖 .env 的 localhost）
+      ZHIYING_DB_HOST: zhiying-postgres
+      ZHIYING_DB_PORT: 5432
+      ZHIYING_DB_NAME: ${ZHIYING_DB_NAME:-zhiying}
+      ZHIYING_DB_USER: ${ZHIYING_DB_USER:-postgres}
+      ZHIYING_DB_PASSWORD: ${ZHIYING_DB_PASSWORD:?请在 .env 中设置 ZHIYING_DB_PASSWORD}
+      ZHIYING_REDIS_HOST: zhiying-redis
+      ZHIYING_REDIS_PORT: 6379
+      # 模型 Key（全部由 .env 注入，镜像内不含任何密钥）
+      SILICONFLOW_API_KEY: ${SILICONFLOW_API_KEY:-}
+      LONGCAT_API_KEY: ${LONGCAT_API_KEY:-}
+      ZHIYING_VLM_PROVIDER: ${ZHIYING_VLM_PROVIDER:-longcat}
+      ZHIYING_TEXT_PROVIDER: ${ZHIYING_TEXT_PROVIDER:-longcat}
+      ZHIYING_EMBED_MODEL: ${ZHIYING_EMBED_MODEL:-BAAI/bge-m3}
+      ZHIYING_SF_VLM_MODEL: ${ZHIYING_SF_VLM_MODEL:-Qwen/Qwen3-VL-8B-Instruct}
+      ZHIYING_TEXT_MODEL: ${ZHIYING_TEXT_MODEL:-Qwen/Qwen3.5-9B}
+      ZHIYING_LONGCAT_BASE: ${ZHIYING_LONGCAT_BASE:-https://api.longcat.chat/openai/v1}
+      ZHIYING_LONGCAT_MODEL: ${ZHIYING_LONGCAT_MODEL:-LongCat-2.5}
+      HF_ENDPOINT: ${HF_ENDPOINT:-https://hf-mirror.com}
+      # 数据目录（容器内路径，外挂 volume）
+      ZHIYING_DATA: /data
+      # 前端静态目录（挂载 zhiying-web/dist）
+      ZHIYING_WEB_DIST: /app/web
+    ports:
+      - "${ZHIYING_SERVER_PORT:-8600}:8600"
+    volumes:
+      # 视频/转写/帧/摘要持久化（换容器不丢数据）
+      - zhiying-data:/data
+      # 前端产物（只读挂载；未构建则纯 API 模式）
+      - ../zhiying-web/dist:/app/web:ro
+
   zhiying-postgres:
     image: pgvector/pgvector:pg18
     container_name: zhiying-postgres
@@ -14,11 +71,11 @@ services:
       POSTGRES_DB: ${ZHIYING_DB_NAME:-zhiying}
       POSTGRES_USER: ${ZHIYING_DB_USER:-postgres}
       POSTGRES_PASSWORD: ${ZHIYING_DB_PASSWORD:?请在 .env 中设置 ZHIYING_DB_PASSWORD}
-      # 中文排序与编码
+      # 中文编码
       POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
     ports:
-      # 宿主机端口（与 gewu 的 15432 对齐，避免占本机 5432）
-      - "${ZHIYING_DB_PORT:-15432}:5432"
+      # 宿主机端口（独立变量，避免与本地 .env 的 ZHIYING_DB_PORT=5432 直连端口冲突）
+      - "${ZHIYING_DB_HOST_PORT:-15432}:5432"
     volumes:
       - zhiying-pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -33,8 +90,7 @@ services:
     restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes"]
     ports:
-      # 与 gewu 的 16379 对齐
-      - "${ZHIYING_REDIS_PORT:-16379}:6379"
+      - "${ZHIYING_REDIS_HOST_PORT:-16379}:6379"
     volumes:
       - zhiying-redisdata:/data
     healthcheck:
@@ -44,5 +100,6 @@ services:
       retries: 5
 
 volumes:
+  zhiying-data:
   zhiying-pgdata:
   zhiying-redisdata:

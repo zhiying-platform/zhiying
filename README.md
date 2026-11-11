@@ -2,148 +2,127 @@
 
 把「收藏夹里吃灰的视频」变成「可检索、可问答、可溯源到时间点的视频知识库」。
 
-输入视频链接（B站 / YouTube / 本地文件），自动完成 **下载 → 语音转写 → 画面识别 → 多模态文案对齐 → 结构化摘要**，产出可入库、可检索、答案可回跳原视频时间点的知识资产。
+输入视频链接（B站 / YouTube / 本地文件），自动完成 **下载 → 语音转写 → 画面识别 → 多模态文案对齐 → 结构化摘要 → 知识库入库**，最终支撑「提问即答、答必溯源到视频时间点」的使用体验。
 
-> **当前版本：V0.2（知识库与服务层）** — 产品规划见 [docs/PRD.md](docs/PRD.md)，实施记录见 [docs/plan/V0.1-PLAN.md](docs/plan/V0.1-PLAN.md)。
+> **当前版本：V1.0（产品化）** — 产品规划见 [docs/PRD.md](docs/PRD.md)，各版本实施记录见 [docs/plan/](docs/plan/)。
+
+## 三种使用方式（按方便程度排序）
+
+| 方式 | 适合谁 | 入口 |
+|---|---|---|
+| **🌐 Web 界面** | 日常使用 | 浏览器打开 `http://127.0.0.1:8600`（Docker 部署自带，无需额外启动） |
+| **🤖 Agent 对话**（MCP） | AI 工具重度用户 | 对话里直接丢链接、直接提问（见 [docs/MCP-SETUP.md](docs/MCP-SETUP.md)） |
+| **⌨️ CLI** | 脚本/批量场景 | `zhiying ingest <url>` |
+
+## 快速开始（Docker 一键，推荐）
+
+```bash
+# 1) 配置（必填 2 项：DB 密码 + 模型 Key）
+cp .env.example .env
+
+# 2) 构建前端产物（首次）
+cd ../zhiying-web && npm ci && npm run build && cd ../zhiying
+
+# 3) 起全套（后端 + PostgreSQL + Redis + 前端托管）
+docker compose up -d
+```
+
+浏览器打开 **http://127.0.0.1:8600** 即用。详细步骤与排错见 [docs/DEPLOY.md](docs/DEPLOY.md)。
 
 ## 特性
 
-- 🎬 **多源接入**：B站 / YouTube / 本地文件；1080p 默认，断点续传，失败片段级重跑
+- 🎬 **多源接入**：B站 / YouTube / 本地文件上传 / 批量导入；断点续传，失败片段级重跑
 - 🎙️ **三级转写降级**：平台字幕 → 硅基流动 SenseVoiceSmall → 本地 Whisper（自动降级，保底可用）
-- 👁️ **VLM 画面识别**：看懂 PPT / 代码 / 图表，OCR 屏幕文字（适配器架构：LongCat-2.5 默认首选，SiliconFlow Qwen3-VL 备选，只改配置切换）
-- 🕐 **时间戳溯源**：口播、画面事实、屏幕文字全部挂时间轴，答案可回跳原视频对应位置
-- 📦 **双形态产物**：人读的 `multimodal_transcript.md` + 机器可读的 `transcript.multimodal.jsonl`（同源生成，不分叉）
-- 🗄️ **知识库契约已冻结**：PostgreSQL + pgvector 表结构 V1（videos / segments / chunks），V0.2 实现检索问答
+- 👁️ **VLM 画面识别**：看懂 PPT / 代码 / 图表，OCR 屏幕文字（LongCat-2.5 默认，SiliconFlow Qwen3-VL 备选）
+- ⚡ **精度两档**：快速（长视频秒级）/ 精细（逐帧场景检测），交互指定（DR-22）
+- 🕐 **时间戳溯源**：答案带引用角标，点击跳转原视频对应时间点（DR-24）
+- 🗄️ **知识库**：PostgreSQL + pgvector 向量检索 + jieba/tsvector 全文，混合排序
+- 🤖 **Agent 原生**：MCP Server 暴露 5 个工具，Claude Code / Codex / OpenClaw 一条配置接入
+- 🔒 **隐私**：数据全部本地（`ZHIYING_DATA` 可自定义路径）；Key 只在后端 `.env`，前端/Agent 不接触
 
-## 快速开始
-
-### 1. 环境准备
+## 本地 Python 部署
 
 ```bash
-# Python 3.10+ 与 venv
 python -m venv .venv
-.venv\Scripts\pip install -r requirements.txt   # Windows
+.venv\Scripts\pip install -e .            # 含 console scripts
+cp .env.example .env                      # 填 Key
+.venv\Scripts\zhiying doctor              # 环境自检
+.venv\Scripts\zhiying-api                 # 起服务
 ```
 
-ffmpeg 免安装：`imageio-ffmpeg` 自带二进制（自动探测）；系统已装 ffmpeg 也可。
-
-### 2. 配置
+CLI 全命令（均有缓存幂等）：
 
 ```bash
-cp .env.example .env    # 填入 SILICONFLOW_API_KEY（必填）等
+zhiying ingest <url> [--precision=fast|precise]   # 端到端处理
+zhiying status [video_id]                          # 状态
+zhiying retry  <video_id>                          # 失败重跑
+zhiying open   <video_id>                          # 打开产物目录
+zhiying transcribe / assemble / summarize <id>     # 单阶段
+zhiying config                                     # 配置一览
+zhiying doctor                                     # 环境自检
 ```
 
-或直接设置环境变量。配置命名与端口约定参照 gewu 项目（DB 15432 / Redis 16379）。
-
-### 3. 环境自检
+## MCP 接入（Agent 对话即用）
 
 ```bash
-.venv\Scripts\python -m zhiying doctor    # 依赖/版本/Key 逐项检查
-.venv\Scripts\python -m zhiying config    # 配置状态一览
+# Claude Code 一条命令
+claude mcp add zhiying -- D:\projectMenu\zhiying\scripts\zhiying-mcp.cmd
 ```
 
-### 4. 处理一条视频（端到端）
-
-```bash
-.venv\Scripts\python -m zhiying ingest "https://www.bilibili.com/video/BVxxxx/"
-# 全流程：下载 → 转写 → 画面识别 → 多模态文案 → 摘要，完成后自动提示产物位置
-```
-
-单阶段命令（可独立使用，均有缓存幂等）：
-
-```bash
-python -m zhiying transcribe BVxxxx    # 语音转写（三级降级）
-python -m zhiying assemble   BVxxxx    # A1 多模态文案（md + jsonl）
-python -m zhiying summarize  BVxxxx    # A3 摘要 + 主题标签 + 溯源要点
-python -m zhiying status    [BVxxxx]   # 视频/任务状态
-python -m zhiying open      BVxxxx     # 打开产物目录
-python -m zhiying retry     BVxxxx     # 从失败阶段重跑
-```
-
-### 5. 知识库与服务（V0.2）
-
-```bash
-# 数据库（pgvector + Redis）
-docker compose up -d
-
-# 首次建表（schema + 迁移，幂等）
-.venv\Scripts\python -m zhiying.storage.init_db
-.venv\Scripts\python -m zhiying.storage.migrate
-
-# 启动 API 服务
-.venv\Scripts\python -m zhiying.api        # http://127.0.0.1:8600  (docs: /docs)
-```
-
-API 端点：
-| 端点 | 说明 |
-|---|---|
-| `POST /api/tasks` | 提交处理任务（202；已完成/处理中返回 409 + 既有 task_id，幂等） |
-| `GET /api/tasks` · `GET /api/tasks/{id}` | 任务列表/详情 |
-| `POST /api/search` | 知识库检索（向量 + 全文混合，带时间戳） |
-| `POST /api/ask` | RAG 问答（答案强制带引用，无据可答显式声明） |
-| `GET /api/videos` | 知识库视频清单（含摘要与主题标签） |
-
-### 6. Agent 接入（V0.2 MCP）
-
-启动 MCP Server（stdio 传输，薄包装 REST API）：
-
-```bash
-.venv\Scripts\python -m zhiying.mcp
-```
-
-暴露 5 个工具：`zhiying_ingest` / `zhiying_task_status` / `zhiying_search` / `zhiying_ask` / `zhiying_list_videos`
-
-接入方式：
-- **OpenClaw**：MCP 客户端配置（对话里直接丢视频链接、提问）
-- **Claude Code**：`claude mcp add zhiying -- python -m zhiying.mcp`
-- **Codex**：`config.toml` 的 `mcp_servers.zhiying`
+接入后对话里直接说：「帮我把这个视频入库：<链接>」「视频里是怎么处理菠萝的？」
+完整指南（Codex / OpenClaw / 通用客户端）见 [docs/MCP-SETUP.md](docs/MCP-SETUP.md)。
 
 ## 产物结构
 
 ```
-data/videos/<video_id>/
-├── meta.json                          # 视频元信息（标题/时长/UP主）
-├── task.json                          # 管道任务状态（queued→…→done/failed）
-├── source/                            # 原视频（1080p，断点续传）
-├── audio/audio.wav                    # 16k 单声道（转写输入）
-├── frames/                            # 关键帧 + VLM 描述缓存
-│   ├── scene_000.jpg
-│   └── descriptions.json
+<data>/videos/<video_id>/
+├── meta.json / task.json              # 元信息与任务状态
+├── source/                            # 源视频（保留，支持重处理）
+├── audio/ · frames/                   # 音频与关键帧（VLM 描述缓存）
 ├── transcript/
-│   ├── transcript.jsonl               # 纯语音转写（带时间戳与来源级别）
 │   ├── multimodal_transcript.md       # ★ A1 人读主产物
 │   └── transcript.multimodal.jsonl    # ★ A1 机器可读（同源生成）
 └── summary.json                       # ★ A3 摘要 + 主题标签 + 溯源要点
 ```
 
-## 架构（V0.1）
+## 架构
 
 ```
-ingest → download（yt-dlp 封装）
-       → transcribe（平台字幕 → SenseVoice → Whisper 三级降级）
-       → frames（PySceneDetect 关键帧）
-       → vlm（适配器：SiliconFlow Qwen3-VL / LongCat-2.5，base64 内联传图）
-       → assemble（时间轴对齐 → A1 双形态）
-       → summarize（文本 LLM → A3）
+Web / Agent(MCP) / CLI
+        ↓ REST API (FastAPI :8600)
+  download(yt-dlp) → transcribe(字幕→SenseVoice→Whisper)
+  → frames(PySceneDetect/seek) → vlm(LongCat/SiliconFlow 适配器)
+  → assemble(A1 双形态) → summarize(A3) → kb(PG+pgvector 入库)
+        ↓
+  检索(向量+全文) → RAG 问答(A4 引用深链)
 ```
 
-设计原则：所有外部依赖（转写引擎 / VLM / 文本 LLM / 向量库 / 导出器）均为适配器接口，切换供应商只改配置不改代码（PRD FR-105 / DR-16）。
+设计原则：转写引擎 / VLM / 文本 LLM / 向量库 / 导出器全部为适配器接口，切换供应商只改配置不改代码（PRD FR-105 / DR-16 / DR-20）。
 
 ## 版本路线
 
 | 版本 | 内容 | 状态 |
 |---|---|---|
-| V0.1 | CLI 最小闭环（单条视频端到端） | ✅ 已完成 |
-| V0.2 | 知识库入库 + 检索 + FastAPI + RAG 问答 + MCP 接入 | ✅ 已完成 |
-| V0.3 | Web 前端（任务台 / 知识库浏览 / 问答界面） | ✅ 当前（前端仓 [zhiying-web](https://github.com/zhiying-platform/zhiying-web)）|
-| V1.0 | 产品化（触发条件制） | 规划中 |
+| V0.1 | CLI 最小闭环 | ✅ |
+| V0.2 | 知识库入库 + 检索 + FastAPI + RAG 问答 + MCP | ✅ |
+| V0.3 | Web 前端（[zhiying-web](https://github.com/zhiying-platform/zhiying-web)） | ✅ |
+| V1.0 | 产品化：打包 / 镜像 / 编排 / 部署文档 / MCP 接入指南 | ✅ 当前 |
 
 ## 相关仓库
 
 | 仓 | 内容 |
 |---|---|
-| [zhiying](https://github.com/zhiying-platform/zhiying)（本仓） | Python 管道 + 知识库 + FastAPI + MCP |
+| [zhiying](https://github.com/zhiying-platform/zhiying)（本仓） | Python 管道 + 知识库 + FastAPI + MCP + Docker |
 | [zhiying-web](https://github.com/zhiying-platform/zhiying-web) | Vue3 前端（任务台 / 知识库 / 问答） |
+
+## 文档索引
+
+| 文档 | 内容 |
+|---|---|
+| [docs/PRD.md](docs/PRD.md) | 产品需求与 22 项决策记录（DR-1~DR-22） |
+| [docs/DEPLOY.md](docs/DEPLOY.md) | 部署指南（Docker 一键 / 本地直装 / 排错表） |
+| [docs/MCP-SETUP.md](docs/MCP-SETUP.md) | MCP 接入指南（四种 Agent） |
+| [docs/plan/](docs/plan/) | 各版本实施记录（V0.1–V1.0） |
 
 ## License
 

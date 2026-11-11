@@ -11,6 +11,7 @@ import subprocess
 import sys
 
 from zhiying.console import setup_console
+from zhiying.envkeys import getenv
 from zhiying.tools.ffmpeg import resolve_ffmpeg
 
 CHECKS = []
@@ -76,7 +77,7 @@ def check_pyyaml() -> tuple[bool, str]:
 
 @check("longcat_key")
 def check_longcat_key() -> tuple[bool, str]:
-    key = os.environ.get("LONGCAT_API_KEY")
+    key = getenv("LONGCAT_API_KEY")
     if key:
         return True, "LONGCAT_API_KEY 已配置", ""
     return (

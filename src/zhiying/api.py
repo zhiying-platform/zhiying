@@ -19,6 +19,8 @@ import threading
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from zhiying import __version__
@@ -279,15 +281,36 @@ def list_videos() -> dict:
     ]}
 
 
+# ---------------------------------------------------------------- 前端静态托管（V1.0 单容器部署）
+# 设置 ZHIYING_WEB_DIST 指向 zhiying-web 的 dist 目录即开启；未设置则纯 API 服务。
+# 必须在所有 /api 路由注册之后挂载 (catch-all 会拦截后续路由)。
+_WEB_DIST = os.environ.get("ZHIYING_WEB_DIST")
+if _WEB_DIST and Path(_WEB_DIST).is_dir():
+    _dist = Path(_WEB_DIST)
+    if (_dist / "assets").is_dir():
+        app.mount("/assets", StaticFiles(directory=str(_dist / "assets")), name="assets")
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    def spa_fallback(full_path: str) -> FileResponse:
+        """SPA 回退：静态文件命中则返回文件，否则返回 index.html（前端路由接管）。"""
+        candidate = (_dist / full_path).resolve()
+        # 目录穿越防护
+        if candidate.is_file() and str(candidate).startswith(str(_dist.resolve())):
+            return FileResponse(candidate)
+        return FileResponse(_dist / "index.html")
+
+
 def main() -> int:
     import uvicorn
 
     from zhiying.console import setup_console
 
     setup_console()
-    host = "127.0.0.1"
-    port = 8600
-    print(f"知映 API: http://{host}:{port}  (docs: /docs)")
+    # 容器内需 0.0.0.0 才能被宿主机访问；本机开发默认 127.0.0.1
+    host = os.environ.get("ZHIYING_API_HOST", "127.0.0.1")
+    port = int(os.environ.get("ZHIYING_API_PORT", "8600"))
+    web = f"  前端: http://{host}:{port}" if _WEB_DIST else ""
+    print(f"知映 API: http://{host}:{port}  (docs: /docs){web}")
     uvicorn.run(app, host=host, port=port, log_level="info")
     return 0
 
