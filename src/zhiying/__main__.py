@@ -269,6 +269,22 @@ def _cmd_transcribe(args: argparse.Namespace) -> int:
     return 1
 
 
+def _cmd_distill(args: argparse.Namespace) -> int:
+    from zhiying.console import setup_console
+    from zhiying.distill import distill
+
+    setup_console()
+    r = distill(args.video_id, force=args.force)
+    if r.get("ok"):
+        cached = "（缓存）" if r.get("cached") else ""
+        print(f"✅ skill 蒸馏完成{cached}：{r['path']}")
+        print(f"   能力卡: {r.get('cards')} 张 | 验证单元: {r.get('verified_units')} | 耗时: {r.get('duration_s')}s")
+        print(f"   入口: SKILL.md（可直接挂载 Claude Code/Codex）")
+        return 0
+    print(f"❌ {r.get('reason')}")
+    return 1
+
+
 def _print_transcript_preview(path: str, n: int = 3) -> None:
     import json
 
@@ -361,6 +377,10 @@ def main(argv: list[str] | None = None) -> int:
     p_sum = sub.add_parser("summarize", help="A3 结构化摘要（缓存幂等）")
     p_sum.add_argument("video_id", help="已 assemble 的 video_id")
     p_sum.add_argument("--force", action="store_true", help="忽略缓存重新生成")
+
+    p_di = sub.add_parser("distill", help="skill 蒸馏（DR-33：A1→能力卡→SKILL.md 包）")
+    p_di.add_argument("video_id", help="已 assemble 的 video_id")
+    p_di.add_argument("--force", action="store_true", help="忽略缓存重新蒸馏")
     p_sum.add_argument("--precision", default="fast", choices=["fast", "precise"])
 
     args = parser.parse_args(argv)
@@ -375,6 +395,7 @@ def main(argv: list[str] | None = None) -> int:
         "transcribe": _cmd_transcribe,
         "assemble": _cmd_assemble,
         "summarize": _cmd_summarize,
+        "distill": _cmd_distill,
     }[args.command](args)
 
 

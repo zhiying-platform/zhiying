@@ -54,6 +54,10 @@ class AskRequest(BaseModel):
     top_k: int = 5
 
 
+class DistillRequest(BaseModel):
+    force: bool = False
+
+
 # ---------------------------------------------------------------- 工具
 
 
@@ -258,6 +262,18 @@ def ask_api(req: AskRequest) -> dict:
     from zhiying.rag import ask
 
     r = ask(req.question, top_k=req.top_k)
+    return r
+
+
+@app.post("/api/distill/{video_id}")
+def distill_api(video_id: str, req: DistillRequest | None = None) -> dict:
+    """skill 蒸馏（DR-33）：A1 → 能力卡 → SKILL.md 包。同步执行（含 LLM 调用，数十秒级）。"""
+    from zhiying.distill import distill
+
+    force = bool(req and req.force)
+    r = distill(video_id, force=force)
+    if not r.get("ok"):
+        raise HTTPException(status_code=422, detail=r.get("reason", "蒸馏失败"))
     return r
 
 

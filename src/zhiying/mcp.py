@@ -95,6 +95,25 @@ def zhiying_ask(question: str, top_k: int = 5) -> str:
 
 
 @mcp.tool()
+def zhiying_distill(video_id: str, force: bool = False) -> str:
+    """skill 蒸馏：把已入库视频的多模态内容蒸馏成可挂载的 SKILL.md 能力包。
+
+    Args:
+        video_id: 已完成处理的 video_id
+        force: 忽略缓存重新蒸馏
+    """
+    import requests as _rq
+
+    try:
+        r = _rq.post(f"{API_BASE}/api/distill/{video_id}", json={"force": force}, timeout=600)
+        if r.status_code >= 400:
+            return json.dumps({"status": "error", "http": r.status_code, "detail": r.text[:300]}, ensure_ascii=False)
+        return json.dumps(r.json(), ensure_ascii=False)
+    except _rq.RequestException as e:
+        return json.dumps({"status": "error", "detail": f"API 不可达: {e}"}, ensure_ascii=False)
+
+
+@mcp.tool()
 def zhiying_list_videos() -> str:
     """列出知识库中已入库的全部视频（含摘要与主题标签）。"""
     r = _call("GET", "/api/videos", timeout=60)
