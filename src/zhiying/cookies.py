@@ -19,6 +19,7 @@ import time
 from pathlib import Path
 
 from zhiying.envkeys import getenv  # noqa: F401  (统一配置读取)
+from zhiying.console import setup_console
 from zhiying.paths import data_root
 
 # 各站点登录态特征 Cookie 与登录入口
@@ -76,6 +77,7 @@ def capture_cookies_interactive(site: str, timeout_sec: int = 300) -> Path | Non
     返回 Cookie 文件路径（成功）或 None（用户关闭/超时/未登录成功）。
     channel 优先复用本机 Edge（无需下载浏览器内核），失败降级 playwright chromium。
     """
+    setup_console()  # 修复 GBK 控制台中文崩溃（实测 UnicodeEncodeError）
     prof = SITE_PROFILES.get(site)
     if not prof:
         print(f"⚠ 不支持的站点: {site}")

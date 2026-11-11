@@ -24,7 +24,13 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from zhiying import __version__
-from zhiying.download import detect_source, load_meta
+from zhiying.cookies import (
+    capture_cookies_interactive,
+    cookie_file_for,
+    has_cookie,
+    SITE_PROFILES,
+)
+from zhiying.download import _interactive_allowed, detect_source, load_meta
 from zhiying.paths import data_root, video_dir
 from zhiying.pipeline import get_task, run_sync
 
@@ -417,8 +423,6 @@ _cookie_jobs: dict[str, dict] = {}
 
 
 def _cookie_job_runner(site: str, timeout_sec: int) -> None:
-    from zhiying.cookies import capture_cookies_interactive, cookie_file_for
-
     try:
         f = capture_cookies_interactive(site, timeout_sec=timeout_sec)
         if f:
@@ -453,8 +457,6 @@ def cookie_login(site: str, req: CookieLoginRequest) -> dict:
 @app.get("/api/cookies/{site}")
 def cookie_status(site: str) -> dict:
     """查询登录引导进度与该站 Cookie 缓存状态。"""
-    from zhiying.cookies import has_cookie, cookie_file_for
-
     job = _cookie_jobs.get(site)
     if job:
         return {"site": site, **job, "has_cookie": has_cookie(site), "file": str(cookie_file_for(site))}
@@ -464,8 +466,6 @@ def cookie_status(site: str) -> dict:
 @app.delete("/api/cookies/{site}")
 def cookie_clear(site: str) -> dict:
     """清除该站点缓存的 Cookie（登录失效或换号时用）。"""
-    from zhiying.cookies import cookie_file_for
-
     f = cookie_file_for(site)
     existed = f.exists()
     f.unlink(missing_ok=True)
