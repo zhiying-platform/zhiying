@@ -315,17 +315,26 @@ def _is_noise(s: str) -> bool:
 # ------------------------------------------------------------------ 检索
 
 
-def deep_link(video_id: str, ts: float) -> str | None:
+def deep_link(video_id: str, ts: float, source: str = "") -> str | None:
     """视频深链（带时间点）；本地文件/未知来源返回 None。
 
-    B站：?t=秒；YouTube：&t=秒s。前端引用跳转与知识库卡片共用。
+    DR-38 扩充：B站/YouTube 直接生成；其他平台有原始链接时尝试拼时间参数。
     """
     if not video_id:
         return None
+    t = int(ts)
     if video_id.startswith("BV"):
-        return f"https://www.bilibili.com/video/{video_id}/?t={int(ts)}"
+        return f"https://www.bilibili.com/video/{video_id}/?t={t}"
     if re.fullmatch(r"[A-Za-z0-9_-]{11}", video_id):
-        return f"https://www.youtube.com/watch?v={video_id}&t={int(ts)}s"
+        return f"https://www.youtube.com/watch?v={video_id}&t={t}s"
+    # 其他平台：有原始链接时尝试拼时间参数（无标准格式的返回原链接）
+    if source and source.lower().startswith(("http://", "https://")):
+        base = source.split("?")[0]
+        if "douyin.com" in base:
+            return f"{base}?t={t}"
+        if "b23.tv" in base:
+            return f"{base}?t={t}"
+        return source  # 微博/小红书等无标准时间参数，返回原链接
     return None
 
 

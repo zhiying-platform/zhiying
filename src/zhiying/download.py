@@ -29,6 +29,25 @@ _BILI_BV = re.compile(r"(BV[0-9A-Za-z]{10})")
 _BILI_AV = re.compile(r"av(\d+)", re.I)
 _YT_ID = re.compile(r"(?:v=|/shorts/|youtu\.be/)([A-Za-z0-9_-]{11})")
 
+# 平台识别表（DR-38：扩充一级缺口——国内常见平台 + 通用外网站点）
+# 匹配键 → (source_type, video_id 提取正则或 None=用 URL 哈希)
+_PLATFORMS = [
+    ("bilibili.com", "bilibili", _BILI_BV),
+    ("b23.tv", "bilibili", _BILI_BV),
+    ("youtube.com", "youtube", _YT_ID),
+    ("youtu.be", "youtube", _YT_ID),
+    ("douyin.com", "douyin", re.compile(r"/video/(\d+)")),
+    ("v.douyin.com", "douyin", None),
+    ("ixigua.com", "xigua", re.compile(r"(?:video/|)(\d+)")),
+    ("weibo.com", "weibo", re.compile(r"show/([0-9]+:[0-9]+)")),
+    ("xiaohongshu.com", "xiaohongshu", re.compile(r"/([0-9a-f]{24})")),
+    ("xhslink.com", "xiaohongshu", None),
+    ("twitter.com", "twitter", re.compile(r"status/(\d+)")),
+    ("x.com", "twitter", re.compile(r"status/(\d+)")),
+    ("vimeo.com", "vimeo", re.compile(r"/(\d+)")),
+    ("twitch.tv", "twitch", re.compile(r"videos/(\d+)")),
+]
+
 
 @dataclass
 class VideoMeta:
@@ -50,22 +69,33 @@ class VideoMeta:
 
 
 def detect_source(src: str) -> tuple[str, str]:
-    """返回 (source_type, video_id)。"""
+    """返回 (source_type, video_id)。
+
+    DR-38：识别表覆盖国内常见平台 + 通用外网站点；未命中平台时若 src 为
+    http(s) URL，仍标记 unknown 并交给 yt-dlp 通用提取器处理（下载层兼容面
+    远大于识别层），ID 用 URL 哈希保证去重。
+    """
     p = Path(src)
     if p.exists():
         # 本地文件：ID 用文件名+大小哈希，稳定且可复现
         h = hashlib.sha1(f"{p.name}:{p.stat().st_size}".encode()).hexdigest()[:12]
         return "local", f"local-{h}"
-    if "bilibili.com" in src or "b23.tv" in src:
-        m = _BILI_BV.search(src) or _BILI_AV.search(src)
-        vid = m.group(1) if m else hashlib.sha1(src.encode()).hexdigest()[:12]
-        if vid.lower().startswith("av"):
-            vid = "BV" + vid  # 归一化标记
-        return "bilibili", vid
-    if "youtube.com" in src or "youtu.be" in src:
-        m = _YT_ID.search(src)
-        vid = m.group(1) if m else hashlib.sha1(src.encode()).hexdigest()[:12]
-        return "youtube", vid
+    for key, stype, pat in _PLATFORMS:
+        if key in src:
+            vid = None
+            if pat is not None:
+                m = pat.search(src)
+                if m:
+                    vid = m.group(1)
+            if not vid:
+                vid = hashlib.sha1(src.encode()).hexdigest()[:12]
+            # B站 av 号归一化标记
+            if stype == "bilibili" and vid.lower().startswith("av"):
+                vid = "BV" + vid
+            return stype, vid
+    if src.lower().startswith(("http://", "https://")):
+        # 未识别平台的 URL：交给 yt-dlp 通用提取器尝试
+        return "unknown", hashlib.sha1(src.encode()).hexdigest()[:12]
     return "unknown", hashlib.sha1(src.encode()).hexdigest()[:12]
 
 

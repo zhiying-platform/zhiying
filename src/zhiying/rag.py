@@ -104,7 +104,7 @@ def ask(question: str, top_k: int = 5) -> dict:
             "quote": c.get("quote", ""),
             "start_ts_fmt": _fmt_ts(start_ts),
             "end_ts_fmt": _fmt_ts(c.get("end_ts", 0)),
-            "url": deep_link(vid, start_ts),
+            "url": deep_link(vid, start_ts, hit.get("source", "") if hit else ""),
         })
     if not norm_cites and data.get("answer_text") and "无依据" not in data.get("answer_text", ""):
         # LLM 没给引用时兜底用检索 hit（保证「答必有据」）
@@ -114,7 +114,7 @@ def ask(question: str, top_k: int = 5) -> dict:
                 "start_ts": h["start_ts"], "end_ts": h["end_ts"],
                 "quote": h["text"][:120],
                 "start_ts_fmt": _fmt_ts(h["start_ts"]), "end_ts_fmt": _fmt_ts(h["end_ts"]),
-                "url": deep_link(h["video_id"], h["start_ts"]),
+                "url": deep_link(h["video_id"], h["start_ts"], h.get("source", "")),
             })
     result = {
         "answer_text": data.get("answer_text", raw[:500]),
