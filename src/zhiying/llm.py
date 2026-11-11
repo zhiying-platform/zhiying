@@ -35,6 +35,9 @@ def _longcat_chat(messages: list[dict], max_tokens: int, temperature: float) -> 
         json={
             "model": model,
             "enable_thinking": False,  # 思考型模型：关闭否则 content 为空（实测）
+            "chat_template_kwargs": {"enable_thinking": False},  # 双保险：vLLM 风格参数，
+            # 实测 enable_thinking 单独用时 reasoning_tokens 仍可能出现（复杂任务吃满
+            # max_tokens 导致 content 缺失）；chat_template_kwargs 变体实测 reasoning=None
             "messages": messages,
             "max_tokens": max_tokens,
             "temperature": temperature,
@@ -43,8 +46,17 @@ def _longcat_chat(messages: list[dict], max_tokens: int, temperature: float) -> 
     )
     if r.status_code != 200:
         raise LLMError(f"LongCat HTTP {r.status_code}: {r.text[:200]}")
+    data = r.json()
+    msg = (data.get("choices") or [{}])[0].get("message", {})
+    content = (msg.get("content") or "").strip()
+    if not content and msg.get("reasoning_content"):
+        # 兜底：思考仍在但未完全压制时，从 reasoning 中救回（最后手段）
+        raise LLMError(
+            f"LongCat 返回空 content（reasoning {len(msg['reasoning_content'])} 字符吃满 max_tokens）；"
+            f"建议增大 max_tokens 或联系供应商"
+        )
     try:
-        return r.json()["choices"][0]["message"]["content"]
+        return content
     except (KeyError, IndexError) as e:
         raise LLMError(f"LongCat 响应结构异常: {e}") from e
 
