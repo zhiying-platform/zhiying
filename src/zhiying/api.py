@@ -203,15 +203,30 @@ def delete_task(video_id: str, mode: str = "record", keep_source: bool = False) 
 
 
 _RUN_STAGES = ("queued", "downloading", "transcribing", "visual", "summarizing")
+_AUTO_RESUME_ON_LIST = True  # DR-36：查询任务列表时自动续跑卡住任务
+
+
+def _is_stuck(task: dict | None) -> bool:
+    """卡住判定（委派 pipeline.is_stuck，单一事实源）。"""
+    from zhiying.pipeline import is_stuck
+
+    return is_stuck(task)
 
 
 @app.get("/api/tasks")
-def list_tasks(stage_filter: str = "all") -> dict:
-    """任务列表；stage_filter 状态筛选（DR-25）：all|running|done|failed|pending。"""
+def list_tasks(stage_filter: str = "all", auto_resume: bool = True) -> dict:
+    """任务列表；stage_filter 状态筛选（DR-25）：all|running|done|failed|pending。
+
+    auto_resume=True（DR-36）：检测到卡住任务自动续跑（管道幂等，已完成阶段复用缓存），
+    带次数上限与冷却保护；auto_resume=False 时只标记 stuck 不动作。
+    """
     from zhiying.pipeline import get_task as _get_task
+    from zhiying.pipeline import resume_if_stuck
 
     vdir = data_root() / "videos"
     out = []
+    resumed_ids: list[str] = []
+    exhausted_ids: list[str] = []
     if vdir.exists():
         for m in sorted(vdir.glob("*/meta.json"), key=lambda x: x.stat().st_mtime, reverse=True):
             vid = m.parent.name
@@ -220,6 +235,19 @@ def list_tasks(stage_filter: str = "all") -> dict:
             stage = (task or {}).get("stage", "-")
             if stage == "-" and (video_dir(vid) / "summary.json").exists():
                 stage = "done"  # 无任务记录的历史视频：从产物推断
+
+            # DR-36 卡住自动续跑（在筛选前执行：无论当前筛选是什么都要恢复卡住任务）
+            stuck = _is_stuck(task)
+            resume_info: dict | None = None
+            if stuck and auto_resume and _AUTO_RESUME_ON_LIST:
+                resume_info = resume_if_stuck(vid, task=task)
+                if resume_info.get("resumed"):
+                    resumed_ids.append(vid)
+                    task = _get_task(vid) or task  # 刷新为 queued
+                    stage = (task or {}).get("stage", stage)
+                elif "上限" in str(resume_info.get("reason", "")):
+                    exhausted_ids.append(vid)
+
             # 状态筛选（DR-25；注意不要用循环变量 stage 当筛选条件——参数遮蔽事故）
             if stage_filter == "running" and stage not in _RUN_STAGES:
                 continue
@@ -235,8 +263,40 @@ def list_tasks(stage_filter: str = "all") -> dict:
                 "status": meta.status if meta else "",
                 "stage": stage,
                 "error": (task or {}).get("error", ""),
+                "stuck": stuck and not (resume_info or {}).get("resumed"),
+                "updated_at": (task or {}).get("updated_at", ""),
+                "auto_resume_count": (task or {}).get("auto_resume_count", 0),
+                "last_auto_resume_at": (task or {}).get("last_auto_resume_at", ""),
+                "resume_note": (resume_info or {}).get("reason", ""),
             })
-    return {"tasks": out}
+    return {"tasks": out, "auto_resumed": resumed_ids, "auto_resume_exhausted": exhausted_ids}
+
+
+@app.post("/api/tasks/{video_id}/reset")
+def reset_task(video_id: str) -> dict:
+    """重置卡住的任务（DR-34）：清 task.json 后从失败/中断阶段重跑。
+
+    适用场景：后台进程被回收导致任务永远停在 transcribing/visual（实测事故）。
+    产物幂等：已完成的阶段（下载/转写/帧描述）会复用缓存，不重复调用 API。
+    """
+    from zhiying.pipeline import set_stage, start_async
+
+    d = video_dir(video_id)
+    if not d.exists():
+        raise HTTPException(status_code=404, detail="任务不存在")
+    task = get_task(video_id)
+    if task and task.get("stage") == "done":
+        raise HTTPException(status_code=400, detail="任务已完成，无需重置（如需重跑请用 DELETE + 重新提交）")
+
+    with _lock:
+        _jobs.pop(video_id, None)
+    set_stage(video_id, "queued", "已重置，等待重跑")
+    meta = load_meta(video_id)
+    src = meta.source if meta else None
+    if not src:
+        raise HTTPException(status_code=400, detail="无源信息，无法重跑（请重新提交视频）")
+    start_async(video_id, quality="480", src=src)
+    return {"reset": True, "task_id": video_id, "stage": "queued"}
 
 
 @app.get("/api/tasks/{video_id}")
