@@ -214,19 +214,35 @@ def _is_stuck(task: dict | None) -> bool:
 
 
 @app.get("/api/tasks")
-def list_tasks(stage_filter: str = "all", auto_resume: bool = True) -> dict:
-    """任务列表；stage_filter 状态筛选（DR-25）：all|running|done|failed|pending。
+def list_tasks(
+    stage_filter: str = "all",
+    page: int = 1,
+    page_size: int = 20,
+    keyword: str = "",
+    auto_resume: bool = True,
+) -> dict:
+    """任务列表（DR-37：后端主导统计 + 筛选 + 分页）。
 
-    auto_resume=True（DR-36）：检测到卡住任务自动续跑（管道幂等，已完成阶段复用缓存），
-    带次数上限与冷却保护；auto_resume=False 时只标记 stuck 不动作。
+    返回结构：
+      stats   : 全量各状态计数（不随筛选变化，前端统计卡片直接用）
+      tasks   : 当前筛选 + 分页后的列表（只返当前页，降低前端渲染压力）
+      total   : 当前筛选条件下的总条数（分页用）
+      page/page_size/pages : 分页元信息
+
+    stage_filter：all|running|done|failed|pending；keyword：标题/ID 模糊匹配。
+    auto_resume=True（DR-36）：检测到卡住任务自动续跑（全量扫描，不受筛选影响）。
     """
     from zhiying.pipeline import get_task as _get_task
     from zhiying.pipeline import resume_if_stuck
 
+    page = max(1, page)
+    page_size = max(1, min(page_size, 200))  # 上限保护
+
     vdir = data_root() / "videos"
-    out = []
+    all_rows: list[dict] = []
     resumed_ids: list[str] = []
     exhausted_ids: list[str] = []
+
     if vdir.exists():
         for m in sorted(vdir.glob("*/meta.json"), key=lambda x: x.stat().st_mtime, reverse=True):
             vid = m.parent.name
@@ -236,28 +252,19 @@ def list_tasks(stage_filter: str = "all", auto_resume: bool = True) -> dict:
             if stage == "-" and (video_dir(vid) / "summary.json").exists():
                 stage = "done"  # 无任务记录的历史视频：从产物推断
 
-            # DR-36 卡住自动续跑（在筛选前执行：无论当前筛选是什么都要恢复卡住任务）
+            # DR-36 卡住自动续跑（全量扫描：不受筛选/分页影响）
             stuck = _is_stuck(task)
             resume_info: dict | None = None
             if stuck and auto_resume and _AUTO_RESUME_ON_LIST:
                 resume_info = resume_if_stuck(vid, task=task)
                 if resume_info.get("resumed"):
                     resumed_ids.append(vid)
-                    task = _get_task(vid) or task  # 刷新为 queued
+                    task = _get_task(vid) or task
                     stage = (task or {}).get("stage", stage)
                 elif "上限" in str(resume_info.get("reason", "")):
                     exhausted_ids.append(vid)
 
-            # 状态筛选（DR-25；注意不要用循环变量 stage 当筛选条件——参数遮蔽事故）
-            if stage_filter == "running" and stage not in _RUN_STAGES:
-                continue
-            if stage_filter == "done" and stage != "done":
-                continue
-            if stage_filter == "failed" and stage != "failed":
-                continue
-            if stage_filter == "pending" and stage not in ("queued", "-"):
-                continue
-            out.append({
+            all_rows.append({
                 "video_id": vid,
                 "title": meta.title if meta else "",
                 "status": meta.status if meta else "",
@@ -269,7 +276,48 @@ def list_tasks(stage_filter: str = "all", auto_resume: bool = True) -> dict:
                 "last_auto_resume_at": (task or {}).get("last_auto_resume_at", ""),
                 "resume_note": (resume_info or {}).get("reason", ""),
             })
-    return {"tasks": out, "auto_resumed": resumed_ids, "auto_resume_exhausted": exhausted_ids}
+
+    # ---- 全量统计（不随筛选变化，对应前端四张统计卡片）----
+    stats = {
+        "total": len(all_rows),
+        "running": sum(1 for r in all_rows if r["stage"] in _RUN_STAGES),
+        "done": sum(1 for r in all_rows if r["stage"] == "done"),
+        "failed": sum(1 for r in all_rows if r["stage"] == "failed"),
+        "stuck": sum(1 for r in all_rows if r["stuck"]),
+    }
+
+    # ---- 条件筛选 ----
+    rows = all_rows
+    if stage_filter == "running":
+        rows = [r for r in rows if r["stage"] in _RUN_STAGES]
+    elif stage_filter == "done":
+        rows = [r for r in rows if r["stage"] == "done"]
+    elif stage_filter == "failed":
+        rows = [r for r in rows if r["stage"] == "failed"]
+    elif stage_filter == "pending":
+        rows = [r for r in rows if r["stage"] in ("queued", "-")]
+
+    kw = keyword.strip().lower()
+    if kw:
+        rows = [r for r in rows if kw in (r["title"] or "").lower() or kw in r["video_id"].lower()]
+
+    # ---- 分页（只返当前页，避免前端一次渲染全部）----
+    total = len(rows)
+    pages = max(1, (total + page_size - 1) // page_size)
+    page = min(page, pages)
+    start = (page - 1) * page_size
+    page_rows = rows[start : start + page_size]
+
+    return {
+        "tasks": page_rows,
+        "stats": stats,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "pages": pages,
+        "auto_resumed": resumed_ids,
+        "auto_resume_exhausted": exhausted_ids,
+    }
 
 
 @app.post("/api/tasks/{video_id}/reset")
