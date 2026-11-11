@@ -21,6 +21,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
+from zhiying.cookies import capture_cookies_interactive, site_for_url, ytdlp_cookie_args
 from zhiying.paths import meta_path, source_dir
 from zhiying.tools.ffmpeg import resolve_ffmpeg
 
@@ -127,6 +128,7 @@ def _run_ytdlp(url: str, out_dir: Path, quality: str = "1080") -> tuple[int, str
         "--retries", "3",
         "--no-mtime",
         "--ffmpeg-location", resolve_ffmpeg() or "ffmpeg",  # 合并音视频必需
+        *ytdlp_cookie_args(url),  # DR-39：有缓存 Cookie 时自动带上
         "-f", fmt,
         "--merge-output-format", "mp4",
         "-o", str(out_dir / "%(title).80s.%(ext)s"),
@@ -165,6 +167,29 @@ def _ytdlp_env() -> dict:
             except OSError:
                 continue
     return env
+
+
+_LOGIN_HINTS = ("login", "log in", "logged in", "sign in", "cookie", "登录", "会员", "premium", "authentication")
+
+
+def _is_login_error(msg: str) -> bool:
+    """yt-dlp 错误是否为登录缺失/失效类（DR-39）。"""
+    m = (msg or "").lower()
+    return any(k in m for k in _LOGIN_HINTS)
+
+
+def _interactive_allowed() -> bool:
+    """是否可弹出浏览器引导登录（DR-39）。
+
+    Linux 容器（/.dockerenv）无显示环境 → False；
+    可用 ZHIYING_INTERACTIVE 环境变量强制覆盖（1/0）。
+    """
+    override = os.environ.get("ZHIYING_INTERACTIVE")
+    if override is not None:
+        return override == "1"
+    if sys.platform == "linux" and os.path.exists("/.dockerenv"):
+        return False
+    return True
 
 
 def _ytdlp_exe() -> str:
@@ -222,6 +247,16 @@ def download(src: str, quality: str = "1080", force: bool = False) -> VideoMeta:
     _save_meta(mp, meta)
     out = source_dir(vid)
     rc, msg = _run_ytdlp(src, out, quality)
+
+    # DR-39：登录缺失/失效时，若有交互环境则弹浏览器引导登录后重试一次
+    if rc != 0 and _is_login_error(msg) and _interactive_allowed():
+        site = site_for_url(src)
+        if site:
+            print(f"ℹ 检测到 {site} 需要登录，弹出浏览器引导登录...")
+            cookie_f = capture_cookies_interactive(site, timeout_sec=300)
+            if cookie_f:
+                rc, msg = _run_ytdlp(src, out, quality)  # 重试一次（带新 Cookie）
+
     if rc != 0:
         meta.status, meta.error = "failed", msg
         _save_meta(mp, meta)

@@ -58,6 +58,11 @@ class DistillRequest(BaseModel):
     force: bool = False
 
 
+class CookieLoginRequest(BaseModel):
+    site: str = Field(..., description="站点名（bilibili/douyin/xiaohongshu/weibo）")
+    timeout_sec: int = Field(300, description="等待登录的最长秒数")
+
+
 # ---------------------------------------------------------------- 工具
 
 
@@ -403,6 +408,69 @@ def list_videos() -> dict:
          "status": r[4], "topics": r[5], "summary": (r[6] or "")[:120]}
         for r in rows
     ]}
+
+
+# ---------------------------------------------------------------- Cookie 管理（DR-39）
+
+# 登录引导会话表（site → 状态）；登录为长操作，走后台线程 + 轮询
+_cookie_jobs: dict[str, dict] = {}
+
+
+def _cookie_job_runner(site: str, timeout_sec: int) -> None:
+    from zhiying.cookies import capture_cookies_interactive, cookie_file_for
+
+    try:
+        f = capture_cookies_interactive(site, timeout_sec=timeout_sec)
+        if f:
+            _cookie_jobs[site] = {"state": "captured", "file": str(f)}
+        else:
+            _cookie_jobs[site] = {"state": "not_captured", "detail": "超时或窗口被关闭，未捕获到登录 Cookie"}
+    except Exception as e:  # noqa: BLE001
+        _cookie_jobs[site] = {"state": "error", "detail": str(e)[:200]}
+
+
+@app.post("/api/cookies/{site}/login")
+def cookie_login(site: str, req: CookieLoginRequest) -> dict:
+    """发起登录引导（DR-39）：弹出浏览器，用户登录后自动捕获 Cookie。
+
+    立即返回 202；用 GET /api/cookies/{site} 轮询状态。
+    """
+    from zhiying.cookies import SITE_PROFILES
+
+    if site not in SITE_PROFILES:
+        raise HTTPException(status_code=400, detail=f"不支持的站点: {site}（支持 {list(SITE_PROFILES)}）")
+    if not _interactive_allowed():
+        raise HTTPException(status_code=400, detail="当前环境无显示界面（容器），请改用手动导入 Cookie 文件")
+    if site in _cookie_jobs and _cookie_jobs[site].get("state") == "capturing":
+        raise HTTPException(status_code=409, detail={"state": "capturing"})
+
+    _cookie_jobs[site] = {"state": "capturing"}
+    t = threading.Thread(target=_cookie_job_runner, args=(site, req.timeout_sec), daemon=True, name=f"cookie-{site}")
+    t.start()
+    return {"site": site, "state": "capturing", "timeout_sec": req.timeout_sec}
+
+
+@app.get("/api/cookies/{site}")
+def cookie_status(site: str) -> dict:
+    """查询登录引导进度与该站 Cookie 缓存状态。"""
+    from zhiying.cookies import has_cookie, cookie_file_for
+
+    job = _cookie_jobs.get(site)
+    if job:
+        return {"site": site, **job, "has_cookie": has_cookie(site), "file": str(cookie_file_for(site))}
+    return {"site": site, "state": "idle", "has_cookie": has_cookie(site), "file": str(cookie_file_for(site))}
+
+
+@app.delete("/api/cookies/{site}")
+def cookie_clear(site: str) -> dict:
+    """清除该站点缓存的 Cookie（登录失效或换号时用）。"""
+    from zhiying.cookies import cookie_file_for
+
+    f = cookie_file_for(site)
+    existed = f.exists()
+    f.unlink(missing_ok=True)
+    _cookie_jobs.pop(site, None)
+    return {"cleared": existed}
 
 
 # ---------------------------------------------------------------- 前端静态托管（V1.0 单容器部署）
