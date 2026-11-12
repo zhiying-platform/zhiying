@@ -1,6 +1,7 @@
 @echo off
 setlocal
 set "APP_DIR=%~dp0.."
+set "ZHIYING_HOME=%APP_DIR%"
 set "ZHIYING_DATA=%APPDATA%\zhiying"
 set "ZHIYING_DB_HOST=127.0.0.1"
 set "ZHIYING_DB_USER=postgres"

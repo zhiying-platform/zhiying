@@ -39,7 +39,14 @@ $corePkgs = @(
     "uvicorn[standard]>=0.54", "mcp>=2.3", "opencv-python-headless>=4.8", "jieba>=0.42", "pywin32",
     "pystray>=0.19", "Pillow>=10"
 )
-& "$root\.venv\Scripts\python.exe" -m pip install -q --no-index --find-links "$ins\wheels" --target "$spDir" @corePkgs 2>&1 | Select-Object -Last 2
+# 注意：重复构建时 --target 已存在会告警「Target directory already exists」，
+# 在 $ErrorActionPreference=Stop 下会被当作错误中止构建；用 --upgrade 幂等覆盖。
+$prevEap = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+& "$root\.venv\Scripts\python.exe" -m pip install -q --upgrade --no-index --find-links "$ins\wheels" --target "$spDir" @corePkgs 2>&1 | Select-Object -Last 2
+$pipExit = $LASTEXITCODE
+$ErrorActionPreference = $prevEap
+if ($pipExit -ne 0) { throw "pip 安装依赖失败（exit=$pipExit）" }
 if ($LASTEXITCODE -ne 0) { throw "pip --target 失败" }
 Write-Host "site-packages: $([int]((Get-ChildItem $spDir -Recurse -File | Measure-Object Length -Sum).Sum / 1MB)) MB"
 
@@ -74,7 +81,11 @@ Copy-Item -Recurse -Force "$web\dist" "$stage\web"
 Write-Host "web: $([int]((Get-ChildItem $stage\web -Recurse -File | Measure-Object Length -Sum).Sum / 1MB)) MB"
 
 Write-Host "=== 6) 环境自检（导入探针，含 zhiying 自身）==="
-$probe = & "$stage\python\python.exe" -c "import fastapi, uvicorn, yt_dlp, cv2, psycopg, jieba, yaml, requests, mcp, pystray, PIL, zhiying.tray; print('imports-ok')" 2>&1
+# 探针：jieba 等第三方包打 SyntaxWarning 到 stderr，Stop 模式会当错误中断 -> 抑制警告 + 临时 Continue
+$prevEap = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+$probe = & "$stage\python\python.exe" -W ignore -c "import fastapi, uvicorn, yt_dlp, cv2, psycopg, jieba, yaml, requests, mcp, pystray, PIL, zhiying.tray; print('imports-ok')" 2>&1
+$ErrorActionPreference = $prevEap
 Write-Host "导入探针: $probe"
 if ("$probe" -notmatch "imports-ok") { throw "核心依赖导入失败" }
 

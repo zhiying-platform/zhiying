@@ -16,6 +16,10 @@ import re
 import shutil
 import socket
 import subprocess
+
+from zhiying import proc
+
+from zhiying.console import setup_console
 import sys
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
@@ -136,7 +140,7 @@ def _run_ytdlp(url: str, out_dir: Path, quality: str = "1080") -> tuple[int, str
         "--write-info-json",
         url,
     ]
-    proc = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", env=_ytdlp_env())
+    proc = proc.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", env=_ytdlp_env())
     tail = "\n".join((proc.stderr or "").strip().splitlines()[-6:])
     printed = [ln for ln in (proc.stdout or "").splitlines() if ln.strip().endswith((".mp4", ".mkv", ".webm", ".flv"))]
     return proc.returncode, printed[-1] if printed else tail

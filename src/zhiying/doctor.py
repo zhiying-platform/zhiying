@@ -10,6 +10,7 @@ import shutil
 import subprocess
 import sys
 
+from zhiying import proc
 from zhiying.console import setup_console
 from zhiying.envkeys import getenv
 from zhiying.tools.ffmpeg import resolve_ffmpeg
@@ -42,7 +43,7 @@ def check_ffmpeg() -> tuple[bool, str]:
     if not exe:
         return False, "未找到 ffmpeg", "pip install imageio-ffmpeg 或安装系统 ffmpeg 后重试"
     try:
-        out = subprocess.run(
+        out = proc.run(
             [exe, "-version"], capture_output=True, text=True, timeout=10, check=True
         ).stdout
         ver = out.splitlines()[0].strip()
@@ -57,7 +58,7 @@ def check_ytdlp() -> tuple[bool, str]:
     if not exe:
         return False, "未找到 yt-dlp", "在 venv 中执行 pip install yt-dlp"
     try:
-        out = subprocess.run(
+        out = proc.run(
             [exe, "--version"], capture_output=True, text=True, timeout=10, check=True
         ).stdout.strip()
         return True, f"yt-dlp {out}", ""

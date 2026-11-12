@@ -18,6 +18,7 @@ import json
 import subprocess
 from pathlib import Path
 
+from zhiying import proc
 from zhiying.download import load_meta
 from zhiying.paths import frames_dir
 from zhiying.tools.ffmpeg import resolve_ffmpeg
@@ -111,7 +112,7 @@ def extract_keyframes(
         fp = out / f"scene_{idx:03d}.{FRAME_FORMAT}"
         cmd = [ff, "-y", "-ss", f"{ts:.2f}", "-i", str(src), "-frames:v", "1",
                "-q:v", str(FRAME_QUALITY), str(fp)]
-        p = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
+        p = proc.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
         if p.returncode == 0 and fp.exists():
             frames.append({"frame_path": str(fp), "ts": round(ts, 2),
                            "scene_idx": i, "mode": "keyframe"})
@@ -145,7 +146,7 @@ def extract_uniform_frames(video_id: str, max_frames: int = 40, precision: str =
         fp = out / f"uniform_{i:03d}.{FRAME_FORMAT}"
         cmd = [ff, "-y", "-ss", f"{ts:.2f}", "-i", str(src), "-frames:v", "1",
                "-q:v", str(FRAME_QUALITY), str(fp)]
-        p = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
+        p = proc.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
         if p.returncode == 0 and fp.exists():
             frames.append({"frame_path": str(fp), "ts": round(ts, 2),
                            "scene_idx": i, "mode": "uniform"})

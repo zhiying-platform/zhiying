@@ -15,6 +15,7 @@ import os
 import subprocess
 from pathlib import Path
 
+from zhiying import proc
 from zhiying.console import setup_console  # noqa: F401  (CLI 侧调用前统一设置)
 from zhiying.download import load_meta
 from zhiying.envkeys import getenv
@@ -42,7 +43,7 @@ def extract_audio(video_id: str, src: Path | None = None) -> Path:
         return out
     ff = resolve_ffmpeg()
     cmd = [ff, "-y", "-i", str(src), "-vn", "-ac", "1", "-ar", "16000", "-f", "wav", str(out)]
-    proc = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
+    proc = proc.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
     if proc.returncode != 0 or not out.exists():
         raise RuntimeError(f"音频抽取失败: {(proc.stderr or '')[-300:]}")
     return out
@@ -66,7 +67,7 @@ def fetch_platform_subtitle(video_id: str, src_url: str | None = None) -> Path |
         "-o", str(out_dir / "sub"),
         url,
     ]
-    proc = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
+    proc = proc.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
     # 找下载到的字幕文件（排除 danmaku）
     for f in sorted(out_dir.glob("sub*")):
         if f.suffix.lower() in {".json3", ".json", ".srt", ".vtt"} and "danmaku" not in f.name.lower():
@@ -209,7 +210,7 @@ def sensevoice_transcribe(video_id: str) -> Path | None:
         seg = seg_dir / f"seg_{idx:03d}.wav"
         cmd = [ff, "-y", "-i", str(audio), "-ss", str(idx * slice_len), "-t", str(slice_len),
                "-ac", "1", "-ar", "16000", str(seg)]
-        p = subprocess.run(cmd, capture_output=True, text=True)
+        p = proc.run(cmd, capture_output=True, text=True)
         if p.returncode != 0 or not seg.exists() or seg.stat().st_size <= 1024:
             break
         try:

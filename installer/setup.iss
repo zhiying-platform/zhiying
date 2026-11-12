@@ -53,13 +53,15 @@ ArchitecturesInstallIn64BitMode=x64compatible
 Name: "chinesesimplified"; MessagesFile: "ChineseSimplified.isl"
 
 [Types]
-Name: "full"; Description: "完整安装（含知识库向量检索）"
-Name: "compact"; Description: "精简安装（不装数据库，仅 md 知识积累）"
-Name: "custom"; Description: "自定义"
+; 只有两个真实选项（core 固定 + pg 可选），因此不提供「自定义」——
+; 选了自定义也只能勾一个组件，纯属冗余。
+; 注：Description 不支持 \n 换行，只能单行，故把产出物写在同一行。
+Name: "full"; Description: "完整安装（推荐）—— 视频转写 + md 文档 + 摘要 + skill 包 + 知识库检索问答"
+Name: "compact"; Description: "精简安装 —— 只要 md 文档与摘要，不装数据库（无导航检索/问答）"
 
 [Components]
-Name: "core"; Description: "核心（Python 运行时 + 后端 + Web 前端）"; Types: full compact custom; Flags: fixed
-Name: "pg"; Description: "嵌入式 PostgreSQL + pgvector（知识库向量检索）"; Types: full custom
+Name: "core"; Description: "核心运行环境（Python + 后端 + Web 界面）—— 产出：转写、md 文档、摘要、skill 包"; Types: full compact; Flags: fixed
+Name: "pg"; Description: "知识库（PostgreSQL + pgvector，约 300MB）—— 产出：向量检索、问答溯源"; Types: full
 
 [Files]
 ; --- Python 运行时 + 全部依赖 + zhiying 包（标准布局：python\Lib\site-packages，site 扫描 .pth 才生效）---
@@ -95,17 +97,20 @@ Source: "..\docs\installation-readme.txt"; DestDir: "{app}"; DestName: "安装�
 Name: "{userappdata}\zhiying"
 
 [Icons]
-Name: "{group}\知映 zhiying"; Filename: "{app}\scripts\start.cmd"; WorkingDir: "{app}"; IconFilename: "{app}\runtime\python\Lib\site-packages\zhiying\assets\zhiying.ico"
+; 直接指向 pythonw.exe（无控制台程序）：双击不会弹 cmd 窗口。
+; tray.py 自我解析安装路径，自行完成「起 PG → 建库建表 → 起服务 → 开浏览器 → 托盘驻留」。
+Name: "{group}\知映 zhiying"; Filename: "{app}\runtime\python\pythonw.exe"; Parameters: "-m zhiying.tray"; WorkingDir: "{app}"; IconFilename: "{app}\runtime\python\Lib\site-packages\zhiying\assets\zhiying.ico"
 Name: "{group}\停止服务"; Filename: "{app}\scripts\stop.cmd"; WorkingDir: "{app}"
 Name: "{group}\卸载 知映 zhiying"; Filename: "{uninstallexe}"
 Name: "{group}\安装说明"; Filename: "{app}\安装说明.txt"
-Name: "{userdesktop}\知映 zhiying"; Filename: "{app}\scripts\start.cmd"; WorkingDir: "{app}"; IconFilename: "{app}\runtime\python\Lib\site-packages\zhiying\assets\zhiying.ico"; Tasks: desktopicon
+Name: "{userdesktop}\知映 zhiying"; Filename: "{app}\runtime\python\pythonw.exe"; Parameters: "-m zhiying.tray"; WorkingDir: "{app}"; IconFilename: "{app}\runtime\python\Lib\site-packages\zhiying\assets\zhiying.ico"; Tasks: desktopicon
 
 [Tasks]
 Name: "desktopicon"; Description: "创建桌面快捷方式(&D)"; GroupDescription: "附加任务:"
 
 [Run]
-Filename: "{app}\scripts\start.cmd"; Description: "立即启动 知映 zhiying"; WorkingDir: "{app}"; Flags: nowait postinstall skipifsilent
+; postinstall 启动也走 pythonw，安装完成后不会留一个 cmd 窗口
+Filename: "{app}\runtime\python\pythonw.exe"; Parameters: "-m zhiying.tray"; WorkingDir: "{app}"; Description: "立即启动 知映 zhiying"; Flags: nowait postinstall skipifsilent
 
 [UninstallDelete]
 ; 清理卸载后残留（数据目录 {userappdata}\zhiying 由 [Code] 按用户选择处理）

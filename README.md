@@ -34,7 +34,7 @@ cp .env.example .env
 # 2) 构建前端产物（首次）
 cd ../zhiying-web && npm ci && npm run build && cd ../zhiying
 
-# 3) 起全套（后端 + PostgreSQL + Redis + 前端托管）
+# 3) 起全套（后端 + PostgreSQL + 前端托管）
 docker compose up -d
 ```
 

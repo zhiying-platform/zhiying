@@ -106,7 +106,7 @@ cp .env.example .env
 # 2) 构建前端（产物被容器只读挂载）
 cd ..\zhiying-web && npm ci && npm run build && cd ..\zhiying
 
-# 3) 起全套（后端 + PostgreSQL + Redis）
+# 3) 起全套（后端 + PostgreSQL）
 docker compose up -d
 ```
 
@@ -140,7 +140,6 @@ PIP_TRUSTED_HOST=pypi.org
 |---|---|
 | `zhiying-data` | 源视频、转写、关键帧、摘要（**换容器不丢**） |
 | `zhiying-pgdata` | 知识库（videos/segments/chunks + 向量） |
-| `zhiying-redisdata` | 队列数据（预留） |
 
 备份：
 

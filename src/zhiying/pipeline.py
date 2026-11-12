@@ -23,6 +23,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+from zhiying import proc
 from zhiying.paths import video_dir
 
 STAGES = ("queued", "downloading", "transcribing", "visual", "summarizing", "done", "failed")
@@ -161,7 +162,7 @@ def start_async(video_id: str, quality: str = "1080", src: str | None = None, pr
     log_dir.mkdir(parents=True, exist_ok=True)
     env = {**os.environ, "PYTHONPATH": str(Path(__file__).resolve().parents[1])}
     flags = 0x00000008 if sys.platform == "win32" else 0  # DETACHED_PROCESS
-    subprocess.Popen(
+    proc.popen(
         cmd,
         env=env,
         stdout=open(log_dir / "pipeline.log", "w", encoding="utf-8"),

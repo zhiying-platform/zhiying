@@ -2,7 +2,6 @@
 # 一条命令起全套：docker compose up -d
 #   - zhiying-server : 后端 API + 前端静态托管（8600）
 #   - zhiying-postgres: PostgreSQL + pgvector（15432）
-#   - zhiying-redis   : Redis（16379，V0.3 任务队列预留）
 #
 # 首次部署：
 #   1) cp .env.example .env  并填入 ZHIYING_DB_PASSWORD / SILICONFLOW_API_KEY / LONGCAT_API_KEY
@@ -38,8 +37,6 @@ services:
       ZHIYING_DB_NAME: ${ZHIYING_DB_NAME:-zhiying}
       ZHIYING_DB_USER: ${ZHIYING_DB_USER:-postgres}
       ZHIYING_DB_PASSWORD: ${ZHIYING_DB_PASSWORD:?请在 .env 中设置 ZHIYING_DB_PASSWORD}
-      ZHIYING_REDIS_HOST: zhiying-redis
-      ZHIYING_REDIS_PORT: 6379
       # 模型 Key（全部由 .env 注入，镜像内不含任何密钥）
       SILICONFLOW_API_KEY: ${SILICONFLOW_API_KEY:-}
       LONGCAT_API_KEY: ${LONGCAT_API_KEY:-}
@@ -84,22 +81,6 @@ services:
       timeout: 5s
       retries: 5
 
-  zhiying-redis:
-    image: redis:7-alpine
-    container_name: zhiying-redis
-    restart: unless-stopped
-    command: ["redis-server", "--appendonly", "yes"]
-    ports:
-      - "${ZHIYING_REDIS_HOST_PORT:-16379}:6379"
-    volumes:
-      - zhiying-redisdata:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
 volumes:
   zhiying-data:
   zhiying-pgdata:
-  zhiying-redisdata:
