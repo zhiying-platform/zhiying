@@ -1,3 +1,7 @@
+# 知映 zhiying — 运行依赖（pyproject.toml 的镜像，便于 pip install -r）
+# 依赖唯一权威来源是 pyproject.toml；此处仅供不装包、直接跑脚本的场景使用。
+# 新增/升级依赖请改 pyproject.toml，再同步本文件。
+
 # 知映 zhiying — 运行依赖
 
 # ---- V0.1 管道 ----

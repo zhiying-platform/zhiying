@@ -4,17 +4,28 @@
 
 输入视频链接（B站 / YouTube / 本地文件），自动完成 **下载 → 语音转写 → 画面识别 → 多模态文案对齐 → 结构化摘要 → 知识库入库**，最终支撑「提问即答、答必溯源到视频时间点」的使用体验。
 
-> **当前版本：V1.0（产品化）** — 产品规划见 [docs/PRD.md](docs/PRD.md)，各版本实施记录见 [docs/plan/](docs/plan/)。
+> **当前版本：V1.2（Windows 一键安装器）** — 产品规划见 [docs/PRD.md](docs/PRD.md)，各版本实施记录见 [docs/plan/](docs/plan/)。
 
-## 三种使用方式（按方便程度排序）
+## 四种使用方式（按方便程度排序）
 
 | 方式 | 适合谁 | 入口 |
 |---|---|---|
+| **📦 Windows 安装器** | 普通用户（零环境） | 双击 `zhiying-setup.exe`，装完双击桌面图标即用，服务常驻托盘 |
 | **🌐 Web 界面** | 日常使用 | 浏览器打开 `http://127.0.0.1:8600`（Docker 部署自带，无需额外启动） |
 | **🤖 Agent 对话**（MCP） | AI 工具重度用户 | 对话里直接丢链接、直接提问（见 [docs/MCP-SETUP.md](docs/MCP-SETUP.md)） |
 | **⌨️ CLI** | 脚本/批量场景 | `zhiying ingest <url>` |
 
-## 快速开始（Docker 一键，推荐）
+> macOS 用户：官方 `.dmg` 暂缓（PostgreSQL/pgvector 无 macOS 预编译包），请用 Docker 或本地 Python 路径。
+
+## 快速开始（Windows 安装器，最省事）
+
+双击 `zhiying-setup.exe` → 中文向导选组件（完整含知识库 / 精简纯 md）→ 装完双击桌面「知映 zhiying」。
+
+- 服务以**托盘图标**常驻（任务栏右下角），关浏览器服务继续运行
+- 右键托盘「退出」才停止服务；数据在 `%APPDATA%\zhiying`，卸载不丢
+- 无需安装 Python / PostgreSQL / Docker，完全离线
+
+## 快速开始（Docker 一键，开发者推荐）
 
 ```bash
 # 1) 配置（必填 2 项：DB 密码 + 模型 Key）
@@ -106,7 +117,9 @@ Web / Agent(MCP) / CLI
 | V0.1 | CLI 最小闭环 | ✅ |
 | V0.2 | 知识库入库 + 检索 + FastAPI + RAG 问答 + MCP | ✅ |
 | V0.3 | Web 前端（[zhiying-web](https://github.com/zhiying-platform/zhiying-web)） | ✅ |
-| V1.0 | 产品化：打包 / 镜像 / 编排 / 部署文档 / MCP 接入指南 | ✅ 当前 |
+| V1.0 | 产品化：打包 / 镜像 / 编排 / 部署文档 / MCP 接入指南 | ✅ |
+| V1.1 | 脚本安装器（install/start/pg-setup 三件套） | ✅ |
+| V1.2 | Windows 一键安装器：exe 图形向导 + 托盘常驻 + 卸载数据保护 | ✅ 当前 |
 
 ## 相关仓库
 
@@ -119,10 +132,10 @@ Web / Agent(MCP) / CLI
 
 | 文档 | 内容 |
 |---|---|
-| [docs/PRD.md](docs/PRD.md) | 产品需求与 22 项决策记录（DR-1~DR-22） |
-| [docs/DEPLOY.md](docs/DEPLOY.md) | 部署指南（Docker 一键 / 本地直装 / 排错表） |
+| [docs/PRD.md](docs/PRD.md) | 产品需求与决策记录（DR-1~DR-42） |
+| [docs/DEPLOY.md](docs/DEPLOY.md) | 部署指南（Windows 安装器 / Docker 一键 / 本地直装 / 排错表） |
 | [docs/MCP-SETUP.md](docs/MCP-SETUP.md) | MCP 接入指南（四种 Agent） |
-| [docs/plan/](docs/plan/) | 各版本实施记录（V0.1–V1.0） |
+| [docs/plan/](docs/plan/) | 各版本实施记录（V0.1–V1.2） |
 
 ## License
 
