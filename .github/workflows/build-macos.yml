@@ -1,21 +1,23 @@
 # 知映 zhiying — macOS dmg 构建
 #
-# 触发:
-#   - 手动: Actions 页面 workflow_dispatch（推荐先用这个验证）
-#   - 打 tag: v*-macos（附加到 Release）
+# ⚠️ 状态：暂缓（V1.3 再看）
+#   原因：PostgreSQL 官方与 pgvector 均无 macOS 预编译包，嵌入式知识库需 macOS 上
+#         自编 PG + pgvector（依赖 Xcode CLT），当前投入产出不划算。
+#   现状：脚本与 workflow 已就绪且局部实测通过（bash -n / .app 结构 / LF 行尾），
+#         但从未在真实 macOS runner 上跑通 → 恢复时必须先手测一次再发布。
+#
+# 触发：仅手动（workflow_dispatch）。已移除 tag 自动触发，避免误打 tag 产生失败记录。
+#
+# 恢复前必做：
+#   1) 配置 secrets.ZHIYING_WEB_TOKEN（私有仓跨仓检出）
+#   2) 先跑 workflow_dispatch 验证全链路（冒烟步骤会真实起服务探 health）
+#   3) 若要支持知识库，需在 runner 上自编 PG + pgvector 并打进 .app
 #
 # 产出: zhiying-<ver>-macos-arm64.dmg + .sha256
 #
-# 前置（必须配置，否则构建会明确失败并提示）:
-#   Settings → Secrets and variables → Actions → New repository secret
-#   名称: ZHIYING_WEB_TOKEN
-#   值:   具备 zhiying-web 仓读权限的 PAT
-#         （classic: repo 范围 / fine-grained: Contents: Read-only）
-#   原因: 两个仓库均为私有，内置 GITHUB_TOKEN 只能访问当前仓库
-#
 # 说明:
-#   - macOS 版为「精简模式」：不含嵌入式 PostgreSQL（官方无 pgvector macOS 预编译包），
-#     知识库需用户自建 PG，并通过 ~/Library/Application Support/zhiying/macos-env 接入
+#   - macOS 版为「精简模式」：不含嵌入式 PostgreSQL，知识库需用户自建 PG
+#     并通过 ~/Library/Application Support/zhiying/macos-env 接入
 #   - 未做开发者证书签名/公证 → 用户首次打开需右键「打开」（详见 DEPLOY.md）
 #   - 前端 dist 不入仓，一律由 CI 现场构建
 name: build-macos
@@ -27,8 +29,6 @@ on:
         description: "前端仓分支/标签"
         required: false
         default: "develop"
-  push:
-    tags: ["v*-macos"]
 
 permissions:
   contents: write
@@ -111,11 +111,12 @@ jobs:
 
       - name: 组装 .app
         env:
-          ZHIYING_VERSION: ${{ github.ref_name }}
+          SOURCE_REF: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          VER="${ZHIYING_VERSION:-1.2.0}"
-          VER="${VER#v}"; VER="${VER%-macos}"
+          # 版本单一来源：优先取仓库根 VERSION；tag 触发时取 tag 名
+          if [ -f VERSION ]; then VER="$(tr -d '[:space:]' < VERSION)"; else VER="1.2.0"; fi
+          case "$SOURCE_REF" in v*) VER="${SOURCE_REF#v}"; VER="${VER%-macos}";; esac
           [ -n "$VER" ] || VER="1.2.0"
           export ZHIYING_VERSION="$VER"
           chmod +x scripts/macos/*.sh
@@ -156,7 +157,7 @@ jobs:
       - name: 打 dmg
         run: |
           set -euo pipefail
-          VER="${{ github.ref_name }}"; VER="${VER#v}"; VER="${VER%-macos}"
+          if [ -f VERSION ]; then VER="$(tr -d '[:space:]' < VERSION)"; else VER="1.2.0"; fi
           [ -n "$VER" ] || VER="1.2.0"
           OUT="zhiying-${VER}-macos-arm64.dmg"
           ln -sfn /Applications out/Applications
@@ -169,13 +170,5 @@ jobs:
         with:
           name: macos-dmg
           path: |
-            zhiying-*-macos-arm64.dmg
-            zhiying-*-macos-arm64.dmg.sha256
-
-      - name: 附到 Release（tag 触发时）
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
             zhiying-*-macos-arm64.dmg
             zhiying-*-macos-arm64.dmg.sha256

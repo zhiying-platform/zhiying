@@ -3,6 +3,9 @@
 > 三条部署路径：
 > **A. Windows 安装器（普通用户首选）** / **B. Docker 一键** / **C. 本地 Python 直装（开发者）**。
 > 三种方式最终都提供：Web 界面（浏览器）+ REST API + MCP 接入（任一 Agent）。
+>
+> **macOS 用户**：官方 `.dmg` 已暂缓（PostgreSQL/pgvector 无 macOS 预编译包，嵌入式知识库需本地自编）。
+> 当前请用路径 **B** 或 **C**；无 PG 时仍可用 md 累积模式。
 
 ---
 
