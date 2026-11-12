@@ -1,13 +1,24 @@
 ; ============================================================
 ; 知映 zhiying — Windows 离线安装器（Inno Setup 6）
 ; 中文界面 + 组件勾选 + PG 初始化 + 卸载器
-; 构建: ISCC.exe installer\setup.iss
+;
+; 构建（推荐，自动读 VERSION 文件）:
+;   powershell -File installer\build-installer.ps1
+; 直接调用（需自己传参）:
+;   ISCC.exe /DMyAppVersion=1.2.0 setup.iss
 ; ============================================================
 
 #define MyAppName "知映 zhiying"
-#define MyAppVersion "1.1.0"
+; 版本：优先取命令行 /DMyAppVersion，否则回退到默认值
+#ifndef MyAppVersion
+  #define MyAppVersion "1.2.0"
+#endif
 #define MyAppPublisher "zhiying-platform"
 #define MyAppExeName "zhiying.exe"
+; 输出文件名：正式包不带版本号（规范），自测包加 -dev 区分
+#ifndef OutputName
+  #define OutputName "zhiying-setup"
+#endif
 
 [Setup]
 AppId={{8C7B6A5D-4E3F-4B2A-9C1D-0F2E3D4C5B6A}
@@ -18,9 +29,18 @@ DefaultDirName={autopf}\zhiying
 DefaultGroupName=知映 zhiying
 DisableProgramGroupPage=yes
 OutputDir=Output
-OutputBaseFilename=zhiying-setup
+OutputBaseFilename={#OutputName}
+; 快速构建（-Fast）：大件（python/pg）不压缩，编译从 370s 降到 ~68s，供迭代自测
+#ifndef FastBuild
+  #define FastBuild 0
+#endif
+#if FastBuild
+Compression=none
+SolidCompression=no
+#else
 Compression=lzma2/normal
 SolidCompression=yes
+#endif
 WizardStyle=modern
 ; 中文界面
 ShowLanguageDialog=no
@@ -43,13 +63,21 @@ Name: "pg"; Description: "嵌入式 PostgreSQL + pgvector（知识库向量检�
 
 [Files]
 ; --- Python 运行时 + 全部依赖 + zhiying 包（标准布局：python\Lib\site-packages，site 扫描 .pth 才生效）---
+#if FastBuild
+Source: "stage\python\*"; DestDir: "{app}\runtime\python"; Flags: recursesubdirs createallsubdirs ignoreversion nocompression
+#else
 Source: "stage\python\*"; DestDir: "{app}\runtime\python"; Flags: recursesubdirs createallsubdirs ignoreversion
+#endif
 
 ; --- 前端 dist ---
 Source: "stage\web\*"; DestDir: "{app}\web"; Flags: recursesubdirs createallsubdirs ignoreversion
 
 ; --- PostgreSQL（组件 pg）---
+#if FastBuild
+Source: "stage\pg\*"; DestDir: "{app}\runtime\pg"; Components: pg; Flags: recursesubdirs createallsubdirs ignoreversion nocompression
+#else
 Source: "stage\pg\*"; DestDir: "{app}\runtime\pg"; Components: pg; Flags: recursesubdirs createallsubdirs ignoreversion
+#endif
 
 ; --- 启动/管理脚本（安装版脚本组，安装后 {app}\scripts）---
 Source: "..\scripts\installed\start-core.cmd"; DestDir: "{app}\scripts"; DestName: "start.cmd"; Flags: ignoreversion
