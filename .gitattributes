@@ -1,0 +1,35 @@
+# 行尾与编码归一（跨平台）
+#
+# 背景：Windows 上 core.autocrlf=true 会把文本文件转成 CRLF，
+# 而 shell 脚本带 CRLF 在 macOS/Linux 上会报 "bad interpreter: /bin/bash^M"，
+# YAML/批处理也有类似风险。此处按类型锁定。
+
+# 默认：交由 git 自动处理（Windows 检出 CRLF）
+* text=auto
+
+# ---- shell 脚本必须 LF（macOS/Linux 执行）----
+*.sh            text eol=lf
+*.bash          text eol=lf
+
+# ---- CI 配置必须 LF ----
+*.yml           text eol=lf
+*.yaml          text eol=lf
+
+# ---- Python 源码 LF ----
+*.py            text eol=lf
+*.pyi           text eol=lf
+
+# ---- Windows 批处理必须 CRLF（cmd 解析要求，见 windows-cmd-batch-scripts 技能）----
+*.cmd           text eol=crlf
+*.bat           text eol=crlf
+
+# ---- 二进制（不做任何转换）----
+*.ico           binary
+*.png           binary
+*.jpg           binary
+*.zip           binary
+*.gz            binary
+*.tar.gz        binary
+*.exe           binary
+*.dll           binary
+*.whl           binary

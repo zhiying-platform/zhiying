@@ -36,3 +36,8 @@ installer/wheels/
 installer/stage/
 installer/runtime/
 installer/Output/
+
+# ---- 预构建前端产物（不入仓，由 CI 现场构建或本地生成）----
+installer/prebuilt/
+web-dist-out/
+web-dist/

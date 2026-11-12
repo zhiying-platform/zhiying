@@ -1,11 +1,34 @@
-# 知映 zhiying — macOS dmg 构建（tag 触发）
-# 产出: zhiying-<ver>-macos.dmg（Python embeddable + 依赖 + 后端 + 前端；PG 复用 Postgres.app 或 UT991）
+# 知映 zhiying — macOS dmg 构建
+#
+# 触发:
+#   - 手动: Actions 页面 workflow_dispatch（推荐先用这个验证）
+#   - 打 tag: v*-macos（附加到 Release）
+#
+# 产出: zhiying-<ver>-macos-arm64.dmg + .sha256
+#
+# 前置（必须配置，否则构建会明确失败并提示）:
+#   Settings → Secrets and variables → Actions → New repository secret
+#   名称: ZHIYING_WEB_TOKEN
+#   值:   具备 zhiying-web 仓读权限的 PAT
+#         （classic: repo 范围 / fine-grained: Contents: Read-only）
+#   原因: 两个仓库均为私有，内置 GITHUB_TOKEN 只能访问当前仓库
+#
+# 说明:
+#   - macOS 版为「精简模式」：不含嵌入式 PostgreSQL（官方无 pgvector macOS 预编译包），
+#     知识库需用户自建 PG，并通过 ~/Library/Application Support/zhiying/macos-env 接入
+#   - 未做开发者证书签名/公证 → 用户首次打开需右键「打开」（详见 DEPLOY.md）
+#   - 前端 dist 不入仓，一律由 CI 现场构建
 name: build-macos
 
 on:
-  push:
-    tags: ["v*-macos", "v*"]
   workflow_dispatch:
+    inputs:
+      frontend_ref:
+        description: "前端仓分支/标签"
+        required: false
+        default: "develop"
+  push:
+    tags: ["v*-macos"]
 
 permissions:
   contents: write
@@ -14,84 +37,145 @@ jobs:
   dmg:
     runs-on: macos-14
     steps:
-      - uses: actions/checkout@v4
+      - name: 检出后端
+        uses: actions/checkout@v4
 
-      - name: 检出前端
+      - name: 校验 token 已配置
+        run: |
+          set -euo pipefail
+          if [ -z "${{ secrets.ZHIYING_WEB_TOKEN }}" ]; then
+            echo "::error::缺少 secrets.ZHIYING_WEB_TOKEN，无法读取私有仓 zhiying-web"
+            echo "配置: Settings → Secrets and variables → Actions → New repository secret"
+            echo "名称: ZHIYING_WEB_TOKEN；值: 对 zhiying-web 有读权限的 PAT"
+            exit 1
+          fi
+
+      - name: 检出前端（私有仓）
         uses: actions/checkout@v4
         with:
           repository: zhiying-platform/zhiying-web
-          ref: develop
+          ref: ${{ inputs.frontend_ref || 'develop' }}
+          token: ${{ secrets.ZHIYING_WEB_TOKEN }}
           path: zhiying-web
 
-      - name: Setup Python 3.12
-        uses: actions/setup-python@v5
+      - name: 校验前端检出
+        run: |
+          set -euo pipefail
+          test -f zhiying-web/package.json || { echo "::error::前端检出失败，请确认 token 对 zhiying-web 有读权限"; exit 1; }
+          test -f zhiying-web/package-lock.json || { echo "::error::缺少 package-lock.json，npm ci 无法运行"; exit 1; }
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
         with:
-          python-version: "3.12"
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: zhiying-web/package-lock.json
 
       - name: 构建前端
         run: |
+          set -euo pipefail
           cd zhiying-web
           npm ci
           npm run build
+          test -f dist/index.html || { echo "::error::前端构建未产出 dist/index.html"; exit 1; }
+          mkdir -p "$PWD/../web-dist-out"
+          cp -R dist/. "$PWD/../web-dist-out/"
+          echo "前端文件数: $(find "$PWD/../web-dist-out" -type f | wc -l)"
 
-      - name: 组装 .app 包
+      - name: 下载 Python 运行时（macOS arm64）
         run: |
-          VER=${GITHUB_REF_NAME#v}
-          APP=zhiying.app
-          mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$APP/Contents/runtime"
-          # Python 运行时（python-build-standalone macOS arm64）
-          curl -L -o python.tar.gz "https://github.com/astral-sh/python-build-standalone/releases/download/20251014/cpython-3.12.10+20251014-aarch64-apple-darwin-install_only.tar.gz"
-          tar -xzf python.tar.gz -C "$APP/Contents/runtime" --strip-components=1
-          # 依赖（target 安装）
-          "$APP/Contents/runtime/bin/python3" -m pip install --target "$APP/Contents/runtime/lib/python3.12/site-packages" \
+          set -euo pipefail
+          mkdir -p runtime-dl
+          URL="https://github.com/astral-sh/python-build-standalone/releases/download/20251014/cpython-3.12.10+20251014-aarch64-apple-darwin-install_only.tar.gz"
+          for i in 1 2 3; do
+            if curl -fL --retry 3 --retry-delay 5 -o runtime-dl/python.tar.gz "$URL"; then break; fi
+            echo "下载失败，第 $i 次重试..."; sleep 10
+          done
+          test -s runtime-dl/python.tar.gz || { echo "::error::Python 运行时下载失败"; exit 1; }
+          mkdir -p runtime-dl/python
+          tar -xzf runtime-dl/python.tar.gz -C runtime-dl/python --strip-components=1
+          test -x runtime-dl/python/bin/python3 || { echo "::error::运行时结构异常"; exit 1; }
+          runtime-dl/python/bin/python3 --version
+
+      - name: 安装依赖到运行时
+        run: |
+          set -euo pipefail
+          RUNTIME="$PWD/runtime-dl/python"
+          "$RUNTIME/bin/python3" -m pip install --upgrade pip
+          "$RUNTIME/bin/python3" -m pip install \
             "yt-dlp>=2026.10.26" "PyYAML>=6.0" "requests>=2.31" "imageio-ffmpeg>=0.5" \
             "scenedetect>=0.7.3" "psycopg[binary]>=3.3" "jieba>=0.42" "fastapi>=0.160" \
-            "uvicorn[standard]>=0.54" "mcp>=2.3" "opencv-python-headless>=4.8"
-          # 后端源码
-          mkdir -p "$APP/Contents/runtime/lib/python3.12/site-packages"
-          cp -R src/zhiying "$APP/Contents/runtime/lib/python3.12/site-packages/"
-          # 前端
-          cp -R zhiying-web/dist "$APP/Contents/web"
-          # 启动脚本
-          cat > "$APP/Contents/MacOS/zhiying" <<'EOF'
-          #!/bin/bash
-          DIR="$(cd "$(dirname "$0")/.." && pwd)"
-          export ZHIYING_HOME="$DIR"
-          export ZHIYING_DATA="$HOME/Library/Application Support/zhiying"
-          export ZHIYING_WEB_DIST="$DIR/web"
-          export ZHIYING_API_PORT=8600
+            "uvicorn[standard]>=0.54" "mcp>=2.3" "opencv-python-headless>=4.8" \
+            "pystray>=0.19" "Pillow>=10" "pyobjc-framework-Cocoa>=10"
+          "$RUNTIME/bin/python3" -c "import fastapi, uvicorn, yt_dlp, cv2, psycopg, jieba, yaml, requests, mcp, pystray, PIL; print('imports-ok')"
+
+      - name: 组装 .app
+        env:
+          ZHIYING_VERSION: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          VER="${ZHIYING_VERSION:-1.2.0}"
+          VER="${VER#v}"; VER="${VER%-macos}"
+          [ -n "$VER" ] || VER="1.2.0"
+          export ZHIYING_VERSION="$VER"
+          chmod +x scripts/macos/*.sh
+          bash scripts/macos/build-app.sh "$PWD/out" "$PWD" "$PWD/runtime-dl/python" "$PWD/web-dist-out"
+
+      - name: 冒烟测试（真实启动 .app 内解释器）
+        run: |
+          set -euo pipefail
+          APP="$PWD/out/zhiying.app"
+          export ZHIYING_HOME="$APP/Contents"
+          export ZHIYING_DATA="$PWD/smoke-data"
+          export ZHIYING_WEB_DIST="$APP/Contents/web"
+          export ZHIYING_API_PORT=8711
           mkdir -p "$ZHIYING_DATA"
-          open "http://127.0.0.1:8600" 2>/dev/null || true
-          exec "$DIR/runtime/bin/python3" -m zhiying.api
-          EOF
-          chmod +x "$APP/Contents/MacOS/zhiying"
-          # Info.plist
-          cat > "$APP/Contents/Info.plist" <<'EOF'
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0"><dict>
-            <key>CFBundleName</key><string>zhiying</string>
-            <key>CFBundleDisplayName</key><string>知映 zhiying</string>
-            <key>CFBundleIdentifier</key><string>platform.zhiying.app</string>
-            <key>CFBundleVersion</key><string>1.1.0</string>
-            <key>CFBundleShortVersionString</key><string>1.1.0</string>
-            <key>CFBundleExecutable</key><string>zhiying</string>
-            <key>CFBundlePackageType</key><string>APPL</string>
-          </dict></plist>
-          EOF
+          "$APP/Contents/runtime/bin/python3" -m zhiying.api > smoke.log 2>&1 &
+          SRV=$!
+          ok=0
+          for i in $(seq 1 30); do
+            if curl -sf -m 2 "http://127.0.0.1:$ZHIYING_API_PORT/api/health" >/dev/null; then ok=1; break; fi
+            sleep 1
+          done
+          echo "--- smoke.log ---"
+          tail -20 smoke.log || true
+          kill $SRV 2>/dev/null || true
+          if [ "$ok" -ne 1 ]; then echo "::error::冒烟失败：服务未就绪"; exit 1; fi
+          sleep 1
+          code=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:$ZHIYING_API_PORT/" || echo 000)
+          echo "web=$code"
+          echo "[OK] 冒烟通过"
+
+      - name: 签名（adhoc，缓解 Gatekeeper）
+        run: |
+          set -euo pipefail
+          APP="$PWD/out/zhiying.app"
+          codesign --force --deep --sign - "$APP" || echo "adhoc 签名失败（不阻断）"
+          codesign -dv "$APP" 2>&1 | head -5 || true
 
       - name: 打 dmg
         run: |
-          hdiutil create -volname "zhiying" -srcfolder zhiying.app -ov -format UDZO "zhiying-${GITHUB_REF_NAME#v}-macos.dmg"
+          set -euo pipefail
+          VER="${{ github.ref_name }}"; VER="${VER#v}"; VER="${VER%-macos}"
+          [ -n "$VER" ] || VER="1.2.0"
+          OUT="zhiying-${VER}-macos-arm64.dmg"
+          ln -sfn /Applications out/Applications
+          hdiutil create -volname "知映 zhiying" -srcfolder out -ov -format UDZO "$OUT"
+          ls -lh "$OUT"
+          shasum -a 256 "$OUT" | tee "$OUT.sha256"
 
       - name: 上传产物
         uses: actions/upload-artifact@v4
         with:
           name: macos-dmg
-          path: zhiying-*-macos.dmg
+          path: |
+            zhiying-*-macos-arm64.dmg
+            zhiying-*-macos-arm64.dmg.sha256
 
       - name: 附到 Release（tag 触发时）
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: zhiying-*-macos.dmg
+          files: |
+            zhiying-*-macos-arm64.dmg
+            zhiying-*-macos-arm64.dmg.sha256
