@@ -1,0 +1,97 @@
+# 知映 zhiying — macOS dmg 构建（tag 触发）
+# 产出: zhiying-<ver>-macos.dmg（Python embeddable + 依赖 + 后端 + 前端；PG 复用 Postgres.app 或 UT991）
+name: build-macos
+
+on:
+  push:
+    tags: ["v*-macos", "v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  dmg:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 检出前端
+        uses: actions/checkout@v4
+        with:
+          repository: zhiying-platform/zhiying-web
+          ref: develop
+          path: zhiying-web
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: 构建前端
+        run: |
+          cd zhiying-web
+          npm ci
+          npm run build
+
+      - name: 组装 .app 包
+        run: |
+          VER=${GITHUB_REF_NAME#v}
+          APP=zhiying.app
+          mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$APP/Contents/runtime"
+          # Python 运行时（python-build-standalone macOS arm64）
+          curl -L -o python.tar.gz "https://github.com/astral-sh/python-build-standalone/releases/download/20251014/cpython-3.12.10+20251014-aarch64-apple-darwin-install_only.tar.gz"
+          tar -xzf python.tar.gz -C "$APP/Contents/runtime" --strip-components=1
+          # 依赖（target 安装）
+          "$APP/Contents/runtime/bin/python3" -m pip install --target "$APP/Contents/runtime/lib/python3.12/site-packages" \
+            "yt-dlp>=2026.10.26" "PyYAML>=6.0" "requests>=2.31" "imageio-ffmpeg>=0.5" \
+            "scenedetect>=0.7.3" "psycopg[binary]>=3.3" "jieba>=0.42" "fastapi>=0.160" \
+            "uvicorn[standard]>=0.54" "mcp>=2.3" "opencv-python-headless>=4.8"
+          # 后端源码
+          mkdir -p "$APP/Contents/runtime/lib/python3.12/site-packages"
+          cp -R src/zhiying "$APP/Contents/runtime/lib/python3.12/site-packages/"
+          # 前端
+          cp -R zhiying-web/dist "$APP/Contents/web"
+          # 启动脚本
+          cat > "$APP/Contents/MacOS/zhiying" <<'EOF'
+          #!/bin/bash
+          DIR="$(cd "$(dirname "$0")/.." && pwd)"
+          export ZHIYING_HOME="$DIR"
+          export ZHIYING_DATA="$HOME/Library/Application Support/zhiying"
+          export ZHIYING_WEB_DIST="$DIR/web"
+          export ZHIYING_API_PORT=8600
+          mkdir -p "$ZHIYING_DATA"
+          open "http://127.0.0.1:8600" 2>/dev/null || true
+          exec "$DIR/runtime/bin/python3" -m zhiying.api
+          EOF
+          chmod +x "$APP/Contents/MacOS/zhiying"
+          # Info.plist
+          cat > "$APP/Contents/Info.plist" <<'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>CFBundleName</key><string>zhiying</string>
+            <key>CFBundleDisplayName</key><string>知映 zhiying</string>
+            <key>CFBundleIdentifier</key><string>platform.zhiying.app</string>
+            <key>CFBundleVersion</key><string>1.1.0</string>
+            <key>CFBundleShortVersionString</key><string>1.1.0</string>
+            <key>CFBundleExecutable</key><string>zhiying</string>
+            <key>CFBundlePackageType</key><string>APPL</string>
+          </dict></plist>
+          EOF
+
+      - name: 打 dmg
+        run: |
+          hdiutil create -volname "zhiying" -srcfolder zhiying.app -ov -format UDZO "zhiying-${GITHUB_REF_NAME#v}-macos.dmg"
+
+      - name: 上传产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-dmg
+          path: zhiying-*-macos.dmg
+
+      - name: 附到 Release（tag 触发时）
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: zhiying-*-macos.dmg

@@ -1,0 +1,342 @@
+; ============================================================
+; 知映 zhiying — Windows 离线安装器（Inno Setup 6）
+; 中文界面 + 组件勾选 + PG 初始化 + 卸载器
+; 构建: ISCC.exe installer\setup.iss
+; ============================================================
+
+#define MyAppName "知映 zhiying"
+#define MyAppVersion "1.1.0"
+#define MyAppPublisher "zhiying-platform"
+#define MyAppExeName "zhiying.exe"
+
+[Setup]
+AppId={{8C7B6A5D-4E3F-4B2A-9C1D-0F2E3D4C5B6A}
+AppName={#MyAppName}
+AppVersion={#MyAppVersion}
+AppPublisher={#MyAppPublisher}
+DefaultDirName={autopf}\zhiying
+DefaultGroupName=知映 zhiying
+DisableProgramGroupPage=yes
+OutputDir=Output
+OutputBaseFilename=zhiying-setup
+Compression=lzma2/normal
+SolidCompression=yes
+WizardStyle=modern
+; 中文界面
+ShowLanguageDialog=no
+UninstallDisplayIcon={uninstallexe}
+; 按用户安装（免 UAC 提权，安装目录与其他用户数据同域，避免混合权限告警）
+PrivilegesRequired=lowest
+ArchitecturesInstallIn64BitMode=x64compatible
+
+[Languages]
+Name: "chinesesimplified"; MessagesFile: "ChineseSimplified.isl"
+
+[Types]
+Name: "full"; Description: "完整安装（含知识库向量检索）"
+Name: "compact"; Description: "精简安装（不装数据库，仅 md 知识积累）"
+Name: "custom"; Description: "自定义"
+
+[Components]
+Name: "core"; Description: "核心（Python 运行时 + 后端 + Web 前端）"; Types: full compact custom; Flags: fixed
+Name: "pg"; Description: "嵌入式 PostgreSQL + pgvector（知识库向量检索）"; Types: full custom
+
+[Files]
+; --- Python 运行时 + 全部依赖 + zhiying 包（标准布局：python\Lib\site-packages，site 扫描 .pth 才生效）---
+Source: "stage\python\*"; DestDir: "{app}\runtime\python"; Flags: recursesubdirs createallsubdirs ignoreversion
+
+; --- 前端 dist ---
+Source: "stage\web\*"; DestDir: "{app}\web"; Flags: recursesubdirs createallsubdirs ignoreversion
+
+; --- PostgreSQL（组件 pg）---
+Source: "stage\pg\*"; DestDir: "{app}\runtime\pg"; Components: pg; Flags: recursesubdirs createallsubdirs ignoreversion
+
+; --- 启动/管理脚本（安装版脚本组，安装后 {app}\scripts）---
+Source: "..\scripts\installed\start-core.cmd"; DestDir: "{app}\scripts"; DestName: "start.cmd"; Flags: ignoreversion
+Source: "..\scripts\installed\stop.cmd"; DestDir: "{app}\scripts"; Flags: ignoreversion
+Source: "..\scripts\installed\zhiying-cli.cmd"; DestDir: "{app}\scripts"; Flags: ignoreversion
+Source: "..\scripts\installed\zhiying-mcp.cmd"; DestDir: "{app}\scripts"; Flags: ignoreversion
+Source: "..\scripts\installed\pg-setup-installed.cmd"; DestDir: "{app}\scripts"; DestName: "pg-setup.cmd"; Flags: ignoreversion
+
+; --- 文档 ---
+Source: "..\README.md"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\docs\installation-readme.txt"; DestDir: "{app}"; DestName: "安装说明.txt"; Flags: ignoreversion
+
+[Dirs]
+; 数据目录放用户目录（升级不丢数据）
+Name: "{userappdata}\zhiying"
+
+[Icons]
+Name: "{group}\知映 zhiying"; Filename: "{app}\scripts\start.cmd"; WorkingDir: "{app}"; IconFilename: "{app}\runtime\python\Lib\site-packages\zhiying\assets\zhiying.ico"
+Name: "{group}\停止服务"; Filename: "{app}\scripts\stop.cmd"; WorkingDir: "{app}"
+Name: "{group}\卸载 知映 zhiying"; Filename: "{uninstallexe}"
+Name: "{group}\安装说明"; Filename: "{app}\安装说明.txt"
+Name: "{userdesktop}\知映 zhiying"; Filename: "{app}\scripts\start.cmd"; WorkingDir: "{app}"; IconFilename: "{app}\runtime\python\Lib\site-packages\zhiying\assets\zhiying.ico"; Tasks: desktopicon
+
+[Tasks]
+Name: "desktopicon"; Description: "创建桌面快捷方式(&D)"; GroupDescription: "附加任务:"
+
+[Run]
+Filename: "{app}\scripts\start.cmd"; Description: "立即启动 知映 zhiying"; WorkingDir: "{app}"; Flags: nowait postinstall skipifsilent
+
+[UninstallDelete]
+; 清理卸载后残留（数据目录 {userappdata}\zhiying 由 [Code] 按用户选择处理）
+Type: filesandordirs; Name: "{app}\runtime\python\Lib\site-packages\pip"
+; .env 由安装器 [Code] 写入，不在 [Files] 清单内
+Type: files; Name: "{app}\runtime\python\Lib\.env"
+Type: filesandordirs; Name: "{app}\runtime\python\Lib\site-packages\zhiying\__pycache__"
+
+[Code]
+var
+  gDeletePG: Boolean;
+  gDeleteUserData: Boolean;
+  gDataDir: String;
+
+// 目录下是否存在任何文件或子目录
+function HasFilesIn(const Dir: String): Boolean;
+var
+  FindRec: TFindRec;
+  Found: Boolean;
+begin
+  Found := False;
+  if DirExists(Dir) and FindFirst(AddBackslash(Dir) + '*', FindRec) then
+  begin
+    repeat
+      if (FindRec.Name <> '.') and (FindRec.Name <> '..') then
+        Found := True;
+    until (Found) or (not FindNext(FindRec));
+    FindClose(FindRec);
+  end;
+  Result := Found;
+end;
+
+// 解析数据目录：优先读 .env 中 ZHIYING_DATA（安装时指定的存储路径）
+function ResolveDataDir(): String;
+var
+  envFile: String;
+  raw: AnsiString;
+  s: String;
+  val: String;
+  p: Integer;
+begin
+  Result := ExpandConstant('{userappdata}\zhiying');
+  envFile := ExpandConstant('{app}\runtime\python\Lib\.env');
+  if FileExists(envFile) and LoadStringFromFile(envFile, raw) then
+  begin
+    s := String(raw);
+    p := Pos('ZHIYING_DATA=', s);
+    if p > 0 then
+    begin
+      val := Copy(s, p + Length('ZHIYING_DATA='), Length(s));
+      p := Pos(#13, val);
+      if p > 0 then val := Copy(val, 1, p - 1);
+      p := Pos(#10, val);
+      if p > 0 then val := Copy(val, 1, p - 1);
+      val := Trim(val);
+      if val <> '' then Result := val;
+    end;
+  end;
+end;
+
+// 停止运行中的服务：杀 8600（含托盘 pythonw）+ pg_ctl stop 嵌入式 PG
+procedure StopRunningService();
+var
+  rc: Integer;
+  pgctl: String;
+  pgdata: String;
+begin
+  Exec(ExpandConstant('{cmd}'), '/C for /f "tokens=5" %p in (''netstat -ano ^| findstr ":8600" ^| findstr "LISTENING"'') do taskkill /PID %p /F >nul 2>&1', '', SW_HIDE, ewWaitUntilTerminated, rc);
+  pgctl := ExpandConstant('{app}\runtime\pg\bin\pg_ctl.exe');
+  pgdata := ResolveDataDir() + '\pg';
+  if FileExists(pgctl) and DirExists(pgdata) then
+    Exec('"' + pgctl + '"', '-D "' + pgdata + '" stop -m fast', '', SW_HIDE, ewWaitUntilTerminated, rc);
+end;
+
+// 服务是否在运行
+function ServiceRunning(): Boolean;
+var
+  rc: Integer;
+begin
+  Exec(ExpandConstant('{cmd}'), '/C netstat -ano | findstr ":8600" | findstr "LISTENING" >nul 2>&1', '', SW_HIDE, ewWaitUntilTerminated, rc);
+  Result := (rc = 0);
+end;
+
+// 安装前：检测到服务在运行则弹窗确认，用户同意后停服务
+function InitializeSetup(): Boolean;
+begin
+  Result := True;
+  if ServiceRunning() then
+  begin
+    if MsgBox('检测到知映服务正在运行。' + #13#10 + #13#10 +
+             '继续安装需要先停止服务（已保存的数据不会丢失）。' + #13#10 +
+             '是否停止服务并继续安装？', mbConfirmation, MB_YESNO) = IDYES then
+    begin
+      StopRunningService();
+      Sleep(2000);
+    end
+    else
+      Result := False;
+  end;
+end;
+
+// 卸载前：服务停确认 -> 知识库数据取舍 -> 沉淀成果取舍
+function InitializeUninstall(): Boolean;
+begin
+  Result := True;
+  gDeletePG := False;
+  gDeleteUserData := False;
+  gDataDir := ResolveDataDir();
+
+  // 静默卸载（/VERYSILENT）无法交互：停服务但一律保留数据
+  if UninstallSilent() then
+  begin
+    if ServiceRunning() then
+    begin
+      StopRunningService();
+      Sleep(2000);
+    end;
+    exit;
+  end;
+
+  if ServiceRunning() then
+  begin
+    if MsgBox('知映服务正在运行。' + #13#10 + #13#10 +
+             '卸载前需要先停止服务（你的数据不会因此丢失）。' + #13#10 + #13#10 +
+             '是否停止服务并继续卸载？', mbConfirmation, MB_YESNO) = IDYES then
+    begin
+      StopRunningService();
+      Sleep(2000);
+    end
+    else
+      Result := False;
+  end;
+
+  if Result then
+  begin
+    // ① 知识库（向量数据库）：有则询问，默认保留
+    if DirExists(gDataDir + '\pg') then
+    begin
+      if MsgBox('检测到已使用知识库功能（向量数据库）。' + #13#10 + #13#10 +
+               '位置：' + gDataDir + '\pg' + #13#10 + #13#10 +
+               '是否同时删除知识库数据库及其数据？' + #13#10 +
+               '选择「否」= 保留，重新安装后可继续使用。',
+               mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDYES then
+        gDeletePG := True;
+    end;
+
+    // ② 沉淀的 skill 包与 md 文档：默认保留
+    if HasFilesIn(gDataDir + '\videos') then
+    begin
+      if MsgBox('检测到沉淀的知识成果（skill 包与 md 文档）。' + #13#10 + #13#10 +
+               '位置：' + gDataDir + '\videos' + #13#10 + #13#10 +
+               '这些是你的成果，默认保留。是否要一并彻底删除？' + #13#10 +
+               '选择「否」= 保留（可手动备份或迁移）。',
+               mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDYES then
+        gDeleteUserData := True;
+    end;
+
+    // 全部保留时明确告知位置
+    if (not gDeletePG) and (not gDeleteUserData) and DirExists(gDataDir) then
+      MsgBox('视频、知识文档与数据库将保留在：' + #13#10 + gDataDir + #13#10 + #13#10 +
+             '卸载完成后可手动删除该目录，或重新安装后继续使用。',
+             mbInformation, MB_OK);
+  end;
+end;
+
+// 递归清理运行时生成的 __pycache__（.pyc 不在安装清单内，Inno 不会自动删）
+procedure RemovePycacheDirs(const Dir: String);
+var
+  FindRec: TFindRec;
+  Sub: String;
+begin
+  if not DirExists(Dir) then exit;
+  if FindFirst(AddBackslash(Dir) + '*', FindRec) then
+  begin
+    try
+      repeat
+        if (FindRec.Name <> '.') and (FindRec.Name <> '..') and ((FindRec.Attributes and FILE_ATTRIBUTE_DIRECTORY) <> 0) then
+        begin
+          Sub := AddBackslash(Dir) + FindRec.Name;
+          if CompareText(FindRec.Name, '__pycache__') = 0 then
+            DelTree(Sub, True, True, True)
+          else
+            RemovePycacheDirs(Sub);
+        end;
+      until not FindNext(FindRec);
+    finally
+      FindClose(FindRec);
+    end;
+  end;
+end;
+
+// 递归清理空的子目录（自底向上），不影响含文件的目录
+procedure RemoveEmptySubDirs(const Dir: String);
+var
+  FindRec: TFindRec;
+  Sub: String;
+begin
+  if not DirExists(Dir) then exit;
+  if FindFirst(AddBackslash(Dir) + '*', FindRec) then
+  begin
+    try
+      repeat
+        if (FindRec.Name <> '.') and (FindRec.Name <> '..') and
+           ((FindRec.Attributes and FILE_ATTRIBUTE_DIRECTORY) <> 0) then
+        begin
+          Sub := AddBackslash(Dir) + FindRec.Name;
+          RemoveEmptySubDirs(Sub);
+          if not HasFilesIn(Sub) then
+            RemoveDir(Sub);
+        end;
+      until not FindNext(FindRec);
+    finally
+      FindClose(FindRec);
+    end;
+  end;
+end;
+
+// 卸载完成后按用户选择清理数据
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+begin
+  if CurUninstallStep = usPostUninstall then
+  begin
+    if gDeletePG then
+    begin
+      DelTree(gDataDir + '\pg', True, True, True);
+      DeleteFile(gDataDir + '\pg.port');
+      DeleteFile(gDataDir + '\pg.createdb');
+      DeleteFile(gDataDir + '\pg.log');
+    end;
+    if gDeleteUserData then
+      DelTree(gDataDir + '\videos', True, True, True);
+    // 数据目录已空则一并移除
+    if DirExists(gDataDir) and (not HasFilesIn(gDataDir)) then
+      RemoveDir(gDataDir);
+    // 清理程序目录的运行时残留（__pycache__ 等）；空目录一并移除
+    RemovePycacheDirs(ExpandConstant('{app}'));
+    RemoveEmptySubDirs(ExpandConstant('{app}'));
+    if DirExists(ExpandConstant('{app}')) and (not HasFilesIn(ExpandConstant('{app}'))) then
+      RemoveDir(ExpandConstant('{app}'));
+  end;
+end;
+
+// 写入 .env 于实际读取位置：site-packages\zhiying\envkeys.py 用 parents[2]/.env
+// = {app}\runtime\python\Lib\.env（不是 userappdata，也不是 {app} 根）
+procedure CurStepChanged(CurStep: TSetupStep);
+var
+  envContent: String;
+  envPath: String;
+begin
+  if CurStep = ssPostInstall then
+  begin
+    envPath := ExpandConstant('{app}\runtime\python\Lib\.env');
+    if not FileExists(envPath) then
+    begin
+      envContent :=
+        'ZHIYING_HOME=' + ExpandConstant('{app}') + #13#10 +
+        'ZHIYING_DATA=' + ExpandConstant('{userappdata}\zhiying') + #13#10 +
+        'ZHIYING_WEB_DIST=' + ExpandConstant('{app}\web') + #13#10;
+      SaveStringToFile(envPath, envContent, False);
+    end;
+  end;
+end;

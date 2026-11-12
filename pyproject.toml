@@ -27,11 +27,17 @@ dependencies = [
 [project.optional-dependencies]
 # 本地 Whisper（第三级转写保底，可选组件）
 whisper = ["faster-whisper>=1.2.1"]
+# Windows 安装版系统托盘（pystray+Pillow，仅桌面部署需要）
+tray = ["pystray>=0.19", "Pillow>=10"]
 
 [project.scripts]
 zhiying = "zhiying.__main__:main"
 zhiying-api = "zhiying.api:main"
 zhiying-mcp = "zhiying.mcp:main"
+zhiying-tray = "zhiying.tray:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+zhiying = ["assets/*.ico", "storage/*.sql"]

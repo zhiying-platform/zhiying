@@ -1,11 +1,91 @@
-# 部署指南（V1.0 产品化）
+# 部署指南（V1.2）
 
-> 两条部署路径：**A. Docker 一键（推荐）** / **B. 本地 Python 直装**。
-> 两种方式最终都提供：Web 界面（浏览器）+ REST API + MCP 接入（任一 Agent）。
+> 三条部署路径：
+> **A. Windows 安装器（普通用户首选）** / **B. Docker 一键** / **C. 本地 Python 直装（开发者）**。
+> 三种方式最终都提供：Web 界面（浏览器）+ REST API + MCP 接入（任一 Agent）。
 
 ---
 
-## A. Docker 一键部署（推荐）
+## A. Windows 安装器（普通用户首选）
+
+### 前置
+
+- Windows 10/11 x64
+- **无需**安装 Python / PostgreSQL / Docker（全部内置）
+- 无需联网（离线安装包）
+
+### 使用
+
+1. 双击 `zhiying-setup.exe` → 中文向导 → 选择组件：
+   - **完整安装**：含嵌入式 PostgreSQL + pgvector（知识库向量检索）
+   - **精简安装**：仅 md 知识积累，不装数据库
+2. 安装在 `%LOCALAPPDATA%\Programs\zhiying`（按用户安装，无需管理员权限）
+3. 完成后双击桌面「知映 zhiying」→ 服务以**托盘图标**常驻 → 就绪后自动打开浏览器
+
+### 运行形态
+
+| 操作 | 行为 |
+|---|---|
+| 双击图标 | 启动服务（若已在运行则只打开页面），托盘出现「知」字图标 |
+| 关闭浏览器 | 服务继续运行，随时再打开 http://127.0.0.1:8600 |
+| 右键托盘 → 退出 | 停止后端 + 嵌入式 PostgreSQL |
+| 再次双击 | 单实例保护，不会重复启动 |
+
+### 端口
+
+| 端口 | 用途 | 说明 |
+|---|---|---|
+| 8600 | Web + API | 固定 |
+| 15499+ | 嵌入式 PostgreSQL | **自动探测空闲端口**，记录在 `%APPDATA%\zhiying\pg.port`，避开 Docker 与本机已装 PG |
+
+### 数据位置
+
+```
+%APPDATA%\zhiying\
+  videos\<video_id>\       # 视频元信息、帧、转写
+    skill\                 # skill 蒸馏产物（SKILL.md + capabilities/ + GLOSSARY.md + DIGEST.md）
+    transcript\            # multimodal_transcript.md 等人读文档
+  pg\                      # 嵌入式 PostgreSQL 数据（知识库）
+  pg.port / pg.log
+```
+
+### 卸载
+
+卸载会**逐步询问**，默认全部保留数据：
+
+1. 服务在运行 → 询问是否停止后继续
+2. 检测到知识库 → 询问是否删除向量数据库（默认**保留**）
+3. 检测到 skill 包 / md 文档 → 询问是否彻底删除（默认**保留**）
+4. 全部保留时会弹窗告知数据所在路径
+
+静默卸载（`/VERYSILENT`，批量部署用）自动停服务且**一律保留数据**。
+
+### 安装包体积与耗时（实测）
+
+| 项 | 数值 |
+|---|---|
+| 安装包 | 141 MB |
+| 安装耗时 | ~70 秒 |
+| 卸载耗时 | ~3.5 秒 |
+
+> 构建期已剔除 EDB 包自带的 pgAdmin 4 / StackBuilder（16,878 个文件 / 676 MB 的 GUI 工具），以及运行时 `__pycache__`。
+
+### 构建安装包（仅发版需要）
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File installer\build-installer.ps1
+# 产物: installer\Output\zhiying-setup.exe
+```
+
+前置物料（首次构建需一次性准备）：
+- `installer\runtime\python-embed.zip`（python.org 官方 embeddable 3.12）
+- `installer\runtime\pg-binaries.zip`（EDB PostgreSQL 18 zip）
+- `installer\wheels\`（`pip download` 离线 wheels）
+- pgvector 源码 + VS Build Tools 编译（`installer\build-pgvector.bat`）
+
+---
+
+## B. Docker 一键部署
 
 ### 前置
 
@@ -77,7 +157,7 @@ docker compose down -v                   # 停止并清空数据（危险）
 
 ---
 
-## B. 本地 Python 直装
+## C. 本地 Python 直装（开发者）
 
 ```bash
 python -m venv .venv

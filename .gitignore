@@ -30,3 +30,9 @@ node_modules/
 build/
 dist/
 *.egg-info/
+
+# ---- 安装器构建产物（V1.2，体积大且可由 build-installer.ps1 再生产）----
+installer/wheels/
+installer/stage/
+installer/runtime/
+installer/Output/
