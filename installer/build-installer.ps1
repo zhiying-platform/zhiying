@@ -67,8 +67,14 @@ if (-not $SkipStage) {
         Write-Warning "    pgvector 未编译，知识库组件将缺扩展（先跑 build-pgvector.bat）"
     }
 } else {
-    Write-Host ">>> [1-3/4] 跳过 stage 组装（-SkipStage）"
+    Write-Host ">>> [1-3/4] 跳过 stage 组装（-SkipStage），仅同步后端源码"
     if (-not (Test-Path "$ins\stage\python\python.exe")) { throw "stage 不存在，不能使用 -SkipStage" }
+    # 关键：即使用 -SkipStage，也必须把最新源码同步进 stage，否则打出旧代码
+    $spDir = "$ins\stage\python\Lib\site-packages"
+    robocopy "$root\src\zhiying" "$spDir\zhiying" /E /XD __pycache__ /NFL /NDL /NJH /NJS | Out-Null
+    Get-ChildItem "$spDir\zhiying" -Recurse -Directory -Filter "__pycache__" -ErrorAction SilentlyContinue |
+        Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+    Write-Host "    源码已同步（src\zhiying → stage site-packages）"
 }
 
 # ---------- 4) ISCC 打包 ----------
