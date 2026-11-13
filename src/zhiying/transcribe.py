@@ -43,9 +43,9 @@ def extract_audio(video_id: str, src: Path | None = None) -> Path:
         return out
     ff = resolve_ffmpeg()
     cmd = [ff, "-y", "-i", str(src), "-vn", "-ac", "1", "-ar", "16000", "-f", "wav", str(out)]
-    proc = proc.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
-    if proc.returncode != 0 or not out.exists():
-        raise RuntimeError(f"音频抽取失败: {(proc.stderr or '')[-300:]}")
+    res = proc.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
+    if res.returncode != 0 or not out.exists():
+        raise RuntimeError(f"音频抽取失败: {(res.stderr or '')[-300:]}")
     return out
 
 
@@ -67,7 +67,7 @@ def fetch_platform_subtitle(video_id: str, src_url: str | None = None) -> Path |
         "-o", str(out_dir / "sub"),
         url,
     ]
-    proc = proc.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
+    res = proc.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
     # 找下载到的字幕文件（排除 danmaku）
     for f in sorted(out_dir.glob("sub*")):
         if f.suffix.lower() in {".json3", ".json", ".srt", ".vtt"} and "danmaku" not in f.name.lower():
