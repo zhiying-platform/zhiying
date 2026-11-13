@@ -194,10 +194,12 @@ def _open_browser() -> None:
 
 
 def main() -> int:
-    # pythonw 下 stdout/stderr 为 None：日志/uvicorn 写流会异常
+    # pythonw 下 stdout/stderr 为 None：重定向到 app.log（追加），
+    # 这样管道内所有 print（转写降级原因、帧描述告警等）都可查，不再丢失
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
     for name in ("stdout", "stderr"):
         if getattr(sys, name) is None:
-            setattr(sys, name, open(os.devnull, "w", encoding="utf-8"))
+            setattr(sys, name, open(DATA_DIR / "app.log", "a", encoding="utf-8", buffering=1))
 
     # 单实例：服务已在跑则只开浏览器
     if _server_ready(timeout=2.0):

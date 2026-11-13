@@ -296,17 +296,32 @@ def transcribe(video_id: str) -> dict:
         return {"level": "cached", "path": str(existing)}
 
     meta = load_meta(video_id)
+    reasons: list[str] = []
     # 第一级：平台字幕
     sub = fetch_platform_subtitle(video_id)
     if sub:
         return {"level": "platform_subtitle", "path": str(sub)}
+    if meta and meta.source_type != "local" and meta.source:
+        reasons.append("平台字幕：源视频未找到可用字幕")
+    else:
+        reasons.append("平台字幕：本地视频无源 URL，不可用")
     # 第二级：SenseVoice
-    sv = sensevoice_transcribe(video_id)
-    if sv:
-        return {"level": "sensevoice", "path": str(sv)}
+    if not getenv("SILICONFLOW_API_KEY"):
+        reasons.append("SenseVoice：未配置 SILICONFLOW_API_KEY（网页「设置」页可配置）")
+    else:
+        sv = sensevoice_transcribe(video_id)
+        if sv:
+            return {"level": "sensevoice", "path": str(sv)}
+        reasons.append("SenseVoice：调用失败（Key 无效/网络异常，详见任务目录 pipeline.log）")
     # 第三级：本地 Whisper 保底（C+A 方案，2026-11-09 拍板）
     print("ℹ 平台字幕与 SenseVoice 均不可用，切换本地 Whisper 保底")
     wh = whisper_transcribe(video_id)
     if wh:
         return {"level": "whisper_small", "path": str(wh)}
-    return {"level": "failed", "path": None, "note": "全部转写通道失败"}
+    try:
+        import faster_whisper  # noqa: F401
+
+        reasons.append("本地 Whisper：音频中未识别到有效语音段")
+    except ImportError:
+        reasons.append("本地 Whisper：未安装（可选组件）")
+    return {"level": "failed", "path": None, "note": "全部转写通道失败", "reasons": reasons}

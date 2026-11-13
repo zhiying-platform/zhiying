@@ -585,6 +585,81 @@ def cookie_clear(site: str) -> dict:
     return {"cleared": existed}
 
 
+# ---------------------------------------------------------------- 设置（V1.3：网页配置 API Key）
+
+# 允许通过设置页写入的 Key 白名单（不开放任意环境变量写入）
+_SETTINGS_KEYS = ("SILICONFLOW_API_KEY", "LONGCAT_API_KEY")
+
+
+def _mask_key(v: str | None) -> str:
+    if not v:
+        return ""
+    if len(v) <= 8:
+        return "*" * len(v)
+    return v[:4] + "*" * 6 + v[-4:]
+
+
+@app.get("/api/settings")
+def get_settings() -> dict:
+    """当前 Key 配置状态（掩码显示，不回传完整值）。"""
+    from zhiying.envkeys import getenv
+
+    return {"keys": {
+        name: {"configured": bool(getenv(name)), "masked": _mask_key(getenv(name))}
+        for name in _SETTINGS_KEYS
+    }}
+
+
+class SettingsUpdate(BaseModel):
+    siliconflow_api_key: str = ""
+    longcat_api_key: str = ""
+
+
+@app.post("/api/settings")
+def save_settings(req: SettingsUpdate) -> dict:
+    """保存 Key 到 .env（envkeys 读取位置），保存后刷新缓存立即生效。
+
+    空值 = 不修改该项；服务为本机 127.0.0.1 单用户，无跨站风险。
+    """
+    from zhiying import envkeys
+    from zhiying.envkeys import getenv
+
+    env_path = envkeys._dotenv_path()
+    updates = {
+        "SILICONFLOW_API_KEY": req.siliconflow_api_key.strip(),
+        "LONGCAT_API_KEY": req.longcat_api_key.strip(),
+    }
+    lines: list[str] = []
+    if env_path.is_file():
+        lines = env_path.read_text(encoding="utf-8").splitlines()
+    changed = []
+    for name, val in updates.items():
+        if not val:
+            continue
+        new_line = f"{name}={val}"
+        replaced = False
+        for i, ln in enumerate(lines):
+            if ln.strip().startswith(f"{name}="):
+                lines[i] = new_line
+                replaced = True
+                break
+        if not replaced:
+            lines.append(new_line)
+        changed.append(name)
+    if not changed:
+        return {"saved": False, "detail": "未提交任何修改", "keys": {
+            name: {"configured": bool(getenv(name)), "masked": _mask_key(getenv(name))}
+            for name in _SETTINGS_KEYS
+        }}
+    env_path.parent.mkdir(parents=True, exist_ok=True)
+    env_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    envkeys.reload_dotenv()
+    return {"saved": True, "changed": changed, "keys": {
+        name: {"configured": bool(getenv(name)), "masked": _mask_key(getenv(name))}
+        for name in _SETTINGS_KEYS
+    }}
+
+
 # ---------------------------------------------------------------- 前端静态托管（V1.0 单容器部署）
 # 设置 ZHIYING_WEB_DIST 指向 zhiying-web 的 dist 目录即开启；未设置则纯 API 服务。
 # 必须在所有 /api 路由注册之后挂载 (catch-all 会拦截后续路由)。

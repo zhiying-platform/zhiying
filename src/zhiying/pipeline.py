@@ -106,7 +106,11 @@ def _pipeline(video_id: str, quality: str, src: str | None = None, precision: st
         set_stage(video_id, "transcribing", "语音转写（三级降级）")
         tr = transcribe(video_id)
         if not tr.get("path"):
-            set_stage(video_id, "failed", error="转写失败（全部通道）")
+            reasons = tr.get("reasons") or []
+            detail = "转写失败（全部通道）"
+            if reasons:
+                detail += "：" + "；".join(reasons)
+            set_stage(video_id, "failed", error=detail)
             return
 
         prec_label = "精细" if precision == "precise" else "快速"
