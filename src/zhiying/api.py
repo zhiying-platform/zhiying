@@ -401,16 +401,25 @@ def distill_api(video_id: str, req: DistillRequest | None = None) -> dict:
 def _kb_available() -> bool:
     """知识库可用性探测（V1.3）：精简安装未装 PG 时为 False。
 
-    用轻量查询而非读安装组件清单——以运行时真实能力为准。
+    关键：只认「嵌入式安装自带的 PG」——读 %APPDATA%\\zhiying\\pg.port 记录的端口，
+    且该端口真实监听才算可用。不能用 db_conn_kwargs() 默认连 localhost:5432，
+    那会误连用户自己装的 PostgreSQL（本机有 5432 就误判知识库可用）。
     """
     try:
-        import psycopg
+        import socket
 
-        from zhiying.kb import db_conn_kwargs
+        from zhiying.paths import data_root
 
-        with psycopg.connect(**db_conn_kwargs(), connect_timeout=3) as conn:
-            conn.execute("SELECT 1")
-        return True
+        port_file = data_root() / "pg.port"
+        if not port_file.is_file():
+            return False  # 没有 pg.port 记录 = 精简安装（未初始化嵌入式 PG）
+        port = int(port_file.read_text(encoding="utf-8").strip() or 0)
+        if port <= 0:
+            return False
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(1.5)
+            # 端口在监听 = 嵌入式 PG 已在运行
+            return s.connect_ex(("127.0.0.1", port)) == 0
     except Exception:  # noqa: BLE001
         return False
 
