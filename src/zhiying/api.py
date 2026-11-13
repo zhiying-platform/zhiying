@@ -108,6 +108,8 @@ def readonly_config() -> dict:
             "siliconflow": bool(getenv("SILICONFLOW_API_KEY")),
             "longcat": bool(getenv("LONGCAT_API_KEY")),
         },
+        # 能力标志（V1.3）：精简安装未装 PG 时，前端据此隐藏知识库/问答，展示文档管理
+        "kb_available": _kb_available(),
     }
 
 
@@ -394,6 +396,107 @@ def distill_api(video_id: str, req: DistillRequest | None = None) -> dict:
     if not r.get("ok"):
         raise HTTPException(status_code=422, detail=r.get("reason", "蒸馏失败"))
     return r
+
+
+def _kb_available() -> bool:
+    """知识库可用性探测（V1.3）：精简安装未装 PG 时为 False。
+
+    用轻量查询而非读安装组件清单——以运行时真实能力为准。
+    """
+    try:
+        import psycopg
+
+        from zhiying.kb import db_conn_kwargs
+
+        with psycopg.connect(**db_conn_kwargs(), connect_timeout=3) as conn:
+            conn.execute("SELECT 1")
+        return True
+    except Exception:  # noqa: BLE001
+        return False
+
+
+# ---------------------------------------------------------------- 文档管理（精简模式核心功能）
+
+def _list_artifacts(video_id: str) -> dict:
+    """枚举某个视频目录下的人类可读产物（md 文件 + 摘要 + skill 包）。"""
+    base = video_dir(video_id)
+    docs: list[dict] = []
+
+    def _add(rel: str, path: Path, kind: str) -> None:
+        docs.append({
+            "path": rel,
+            "name": path.name,
+            "kind": kind,
+            "size": path.stat().st_size,
+            "modified": int(path.stat().st_mtime),
+        })
+
+    tr = base / "transcript"
+    if tr.is_dir():
+        for f in sorted(tr.glob("*.md")):
+            _add(f"transcript/{f.name}", f, "transcript")
+    sk = base / "skill"
+    if sk.is_dir():
+        for f in sorted(sk.rglob("*.md")):
+            rel = f.relative_to(base).as_posix()
+            _add(rel, f, "skill")
+    summ = base / "summary.md"
+    if summ.is_file():
+        _add("summary.md", summ, "summary")
+    return {"docs": docs}
+
+
+@app.get("/api/docs")
+def list_docs() -> dict:
+    """文档库总览（V1.3，文件系统驱动）：不依赖 PG，精简模式的核心列表。
+
+    扫描 <data>/videos/*/ 下的产物（transcript/summary/skill），合并 meta.json 标题。
+    """
+    root = data_root() / "videos"
+    items: list[dict] = []
+    if root.is_dir():
+        for vd in sorted(root.iterdir(), key=lambda p: p.stat().st_mtime, reverse=True):
+            if not vd.is_dir():
+                continue
+            arts = _list_artifacts(vd.name)
+            if not arts["docs"]:
+                continue
+            meta = load_meta(vd.name)
+            title = (getattr(meta, "title", "") or "") or vd.name
+            kinds = {d["kind"] for d in arts["docs"]}
+            items.append({
+                "video_id": vd.name,
+                "title": title,
+                "doc_count": len(arts["docs"]),
+                "has_transcript": "transcript" in kinds,
+                "has_skill": "skill" in kinds,
+                "has_summary": "summary" in kinds,
+            })
+    return {"videos": items, "kb_available": _kb_available()}
+
+
+@app.get("/api/docs/{video_id}")
+def list_video_docs(video_id: str) -> dict:
+    """单个视频的产物清单（md / skill）。"""
+    if not video_dir(video_id).is_dir():
+        raise HTTPException(status_code=404, detail=f"未找到视频 {video_id}")
+    return {"video_id": video_id, **_list_artifacts(video_id)}
+
+
+@app.get("/api/docs/{video_id}/file")
+def read_doc_file(video_id: str, path: str) -> dict:
+    """读取某个产物 md 的文本内容（路径穿越防护：必须解析后仍落在视频目录内）。"""
+    base = video_dir(video_id).resolve()
+    target = (base / path).resolve()
+    if not str(target).startswith(str(base)):
+        raise HTTPException(status_code=400, detail="非法路径")
+    if not target.is_file() or target.suffix.lower() not in {".md", ".json"}:
+        raise HTTPException(status_code=404, detail=f"文件不存在或类型不支持: {path}")
+    return {
+        "path": target.relative_to(base).as_posix(),
+        "name": target.name,
+        "content": target.read_text(encoding="utf-8", errors="replace"),
+    }
 
 
 @app.get("/api/videos")
