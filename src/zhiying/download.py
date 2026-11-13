@@ -116,7 +116,7 @@ def find_existing_source(video_id: str) -> Path | None:
 
 def _run_ytdlp(url: str, out_dir: Path, quality: str = "1080") -> tuple[int, str]:
     """调用 yt-dlp 下载；返回 (returncode, stderr 尾部)。"""
-    exe = _ytdlp_exe()
+    prefix = _ytdlp_cmd()
     # 格式选择：优先约束清晰度，但必须有逐级回退（竖屏/低清源会匹配不到）
     # 链路：限定高度 → 最佳可用 → 最差可用，保证任何视频都能落下一个文件
     if quality == "best":
@@ -124,7 +124,7 @@ def _run_ytdlp(url: str, out_dir: Path, quality: str = "1080") -> tuple[int, str
     else:
         fmt = f"bv*[height<={quality}]+ba/b[height<={quality}]/bv*+ba/b/worst"
     cmd = [
-        exe,
+        *prefix,
         "--no-playlist",
         "--continue",          # 断点续传
         "--newline",           # 逐行进度，便于日志
@@ -196,15 +196,28 @@ def _interactive_allowed() -> bool:
     return True
 
 
-def _ytdlp_exe() -> str:
+def _ytdlp_cmd() -> list[str]:
+    """返回调用 yt-dlp 的完整命令前缀。
+
+    三级回退（安装版 --target 装包不生成 exe 入口，实测踩坑）：
+    1) 解释器旁的 yt-dlp.exe（开发 venv / pip install 场景）
+    2) PATH 中的 yt-dlp
+    3) [python, -m, yt_dlp] 模块方式——只要 yt_dlp 包在就能跑（安装版唯一可用路径）
+    """
     base = Path(sys.executable).parent
     for name in ("yt-dlp.exe", "yt-dlp"):
         p = base / name
         if p.exists():
-            return str(p)
+            return [str(p)]
     w = shutil.which("yt-dlp")
     if w:
-        return w
+        return [w]
+    try:
+        import yt_dlp  # noqa: F401
+
+        return [sys.executable, "-m", "yt_dlp"]
+    except ImportError:
+        pass
     raise RuntimeError("未找到 yt-dlp，请在 venv 中安装：pip install yt-dlp")
 
 

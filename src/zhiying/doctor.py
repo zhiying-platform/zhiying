@@ -54,16 +54,36 @@ def check_ffmpeg() -> tuple[bool, str]:
 
 @check("yt-dlp")
 def check_ytdlp() -> tuple[bool, str]:
-    exe = shutil.which("yt-dlp") or _venv_script("yt-dlp.exe") or _venv_script("yt-dlp")
-    if not exe:
-        return False, "未找到 yt-dlp", "在 venv 中执行 pip install yt-dlp"
+    # 与 download._ytdlp_cmd 同口径：exe / PATH / python -m yt_dlp 三级回退
+    # （安装版 --target 装包不生成 exe，模块方式是唯一可用路径）
     try:
-        out = proc.run(
-            [exe, "--version"], capture_output=True, text=True, timeout=10, check=True
-        ).stdout.strip()
-        return True, f"yt-dlp {out}", ""
-    except Exception as e:  # noqa: BLE001
-        return False, f"yt-dlp 调用失败: {e}", "重装 yt-dlp"
+        import yt_dlp  # noqa: F401
+
+        mod_ok = True
+    except ImportError:
+        mod_ok = False
+    exe = shutil.which("yt-dlp") or _venv_script("yt-dlp.exe") or _venv_script("yt-dlp")
+    if not exe and not mod_ok:
+        return False, "未找到 yt-dlp", "在 venv 中执行 pip install yt-dlp"
+    if exe:
+        try:
+            out = proc.run(
+                [exe, "--version"], capture_output=True, text=True, timeout=10, check=True
+            ).stdout.strip()
+            return True, f"yt-dlp {out}", ""
+        except Exception as e:  # noqa: BLE001
+            if not mod_ok:
+                return False, f"yt-dlp 调用失败: {e}", "重装 yt-dlp"
+    if mod_ok:
+        try:
+            out = proc.run(
+                [sys.executable, "-m", "yt_dlp", "--version"],
+                capture_output=True, text=True, timeout=15, check=True,
+            ).stdout.strip()
+            return True, f"yt-dlp {out}（模块方式）", ""
+        except Exception as e:  # noqa: BLE001
+            return False, f"yt-dlp 模块方式调用失败: {e}", "重装 yt-dlp"
+    return False, "未找到 yt-dlp", "在 venv 中执行 pip install yt-dlp"
 
 
 @check("pyyaml")

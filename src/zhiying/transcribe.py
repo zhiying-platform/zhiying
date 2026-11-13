@@ -59,9 +59,10 @@ def fetch_platform_subtitle(video_id: str, src_url: str | None = None) -> Path |
     if not url:
         return None
     out_dir = transcript_dir(video_id)
-    exe = str(Path(__import__("sys").executable).parent / "yt-dlp.exe")
+    from zhiying.download import _ytdlp_cmd
+
     cmd = [
-        exe, "--no-playlist", "--skip-download",
+        *_ytdlp_cmd(), "--no-playlist", "--skip-download",
         "--write-subs", "--sub-langs", ",".join(PLATFORM_SUB_LANGS),
         "--sub-format", "json3/srt/vtt/best",
         "-o", str(out_dir / "sub"),
