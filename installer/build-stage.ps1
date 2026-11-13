@@ -77,7 +77,10 @@ Write-Host "  已移除 $($pyc.Count) 个 __pycache__ 目录（约 $pycCount 个
 
 Write-Host "=== 5) 前端 dist ==="
 if (-not (Test-Path "$web\dist\index.html")) { throw "前端 dist 缺失，先 npm run build" }
-Copy-Item -Recurse -Force "$web\dist" "$stage\web"
+# 必须用 /MIR 镜像：Copy-Item 是合并复制，会积累旧 hash 文件名的 chunk，
+# 导致安装包里新旧两套 JS 并存、页面加载到旧版（实测：设置页字段名修复进不了包）
+robocopy "$web\dist" "$stage\web" /MIR /NFL /NDL /NJH /NJS | Out-Null
+if ($LASTEXITCODE -ge 8) { throw "前端 dist 镜像失败 code=$LASTEXITCODE" }
 Write-Host "web: $([int]((Get-ChildItem $stage\web -Recurse -File | Measure-Object Length -Sum).Sum / 1MB)) MB"
 
 Write-Host "=== 6) 环境自检（导入探针，含 zhiying 自身）==="
