@@ -57,7 +57,7 @@ Name: "chinesesimplified"; MessagesFile: "ChineseSimplified.isl"
 ; 选了自定义也只能勾一个组件，纯属冗余。
 ; 注：Description 不支持 \n 换行，只能单行，故把产出物写在同一行。
 Name: "full"; Description: "完整安装（推荐）—— 视频转写 + md 文档 + 摘要 + skill 包 + 知识库检索问答"
-Name: "compact"; Description: "精简安装 —— 只要 md 文档与摘要，不装数据库（无导航检索/问答）"
+Name: "compact"; Description: "精简安装 —— 视频转写 + md 文档 + 摘要 + skill 包（不装数据库，无检索/问答）"
 
 [Components]
 Name: "core"; Description: "核心运行环境（Python + 后端 + Web 界面）—— 产出：转写、md 文档、摘要、skill 包"; Types: full compact; Flags: fixed
