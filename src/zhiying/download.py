@@ -16,6 +16,7 @@ import re
 import shutil
 import socket
 import subprocess
+import time
 
 from zhiying import proc
 
@@ -109,6 +110,8 @@ def find_existing_source(video_id: str) -> Path | None:
     d = source_dir(video_id)
     for f in d.iterdir() if d.exists() else []:
         if f.is_file() and f.suffix.lower() in {".mp4", ".mkv", ".webm", ".flv", ".mov", ".m4a", ".mp3", ".wav"}:
+            if _FRAG_RE.search(f.name):
+                continue  # 未合并的流分片（如 xxx.f30280.m4a）不是完整源，不能当缓存命中
             if f.stat().st_size > 0:
                 return f
     return None
@@ -174,6 +177,33 @@ def _ytdlp_env() -> dict:
 
 
 _LOGIN_HINTS = ("login", "log in", "logged in", "sign in", "cookie", "登录", "会员", "premium", "authentication")
+
+
+# 未合并的流分片：yt-dlp 分开下载音视频时产物形如 xxx.f30280.m4a / xxx.f30032.mp4，
+# 合并成功后只剩一个最终文件。分片不是完整源，缓存查找必须跳过（实测坑）
+_FRAG_RE = re.compile(r"\.f\d+\.", re.IGNORECASE)
+
+
+def _is_transient_net_error(msg: str) -> bool:
+    """网络层瞬时错误（CDN 节点拒绝/超时/重置）——换节点重试可能成功。
+
+    B站 PCDN（mcdn.bilivivid.cn:8082）经常不可达（WinError 10061），
+    yt-dlp 内部 retries 只重试同一节点；管道级重试会重新请求播放地址，
+    通常被分配到不同 CDN。
+    """
+    if not msg:
+        return False
+    markers = (
+        "Failed to establish a new connection",
+        "WinError 10061",
+        "WinError 10060",
+        "Connection reset",
+        "connection refused",
+        "timed out",
+        "Temporary failure",
+    )
+    low = msg.lower()
+    return any(m.lower() in low for m in markers)
 
 
 def _is_login_error(msg: str) -> bool:
@@ -264,6 +294,16 @@ def download(src: str, quality: str = "1080", force: bool = False) -> VideoMeta:
     _save_meta(mp, meta)
     out = source_dir(vid)
     rc, msg = _run_ytdlp(src, out, quality)
+
+    # CDN 瞬时错误重试（实测：B站 PCDN 节点 mcdn.bilivideo.cn:8082 经常拒绝连接，
+    # yt-dlp 内部 retries 只重试同一节点；重新请求播放地址通常会换到不同 CDN）
+    for attempt in range(1, 3):
+        if rc == 0 or not _is_transient_net_error(msg):
+            break
+        wait = 5 * attempt
+        print(f"⚠ 网络瞬时错误（第 {attempt} 次重试，{wait}s 后）：{msg[-120:]}")
+        time.sleep(wait)
+        rc, msg = _run_ytdlp(src, out, quality)
 
     # DR-39：登录缺失/失效时，若有交互环境则弹浏览器引导登录后重试一次
     if rc != 0 and _is_login_error(msg) and _interactive_allowed():
