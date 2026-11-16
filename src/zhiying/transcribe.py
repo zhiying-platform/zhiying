@@ -25,6 +25,9 @@ from zhiying.tools.ffmpeg import resolve_ffmpeg
 
 PLATFORM_SUB_LANGS = ("ai-zh", "zh-Hans", "zh-CN", "zh")
 
+# SenseVoice 最近一次失败原因（由 sensevoice_transcribe 写入，聚合到任务台错误）
+_SENSEVOICE_LAST_ERROR = ""
+
 # HuggingFace 模型下载端点：国内默认走镜像（HF 直连常被阻断）
 if not os.environ.get("HF_ENDPOINT"):
     os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
@@ -173,6 +176,7 @@ def sensevoice_transcribe(video_id: str) -> Path | None:
 
     大音频按 60s 切片并发送（免费档单文件大小受限），逐片落 jsonl。
     """
+    global _SENSEVOICE_LAST_ERROR
     import os
 
     import requests
@@ -230,7 +234,14 @@ def sensevoice_transcribe(video_id: str) -> Path | None:
             seg.unlink(missing_ok=True)
             break  # 出现请求异常直接结束第二级，交给 Whisper 保底
         if r.status_code != 200:
-            print(f"⚠ 片段 {idx} 转写失败 HTTP {r.status_code}: {r.text[:200]}")
+            # HTTP 402 = 余额不足（不是 Key 失效）；把真实原因透传到任务台
+            try:
+                body = r.json()
+                msg = body.get("message") or body.get("msg") or ""
+            except Exception:  # noqa: BLE001
+                msg = (r.text or "")[:160]
+            _SENSEVOICE_LAST_ERROR = f"HTTP {r.status_code}" + (f"：{msg}" if msg else "")
+            print(f"⚠ 片段 {idx} 转写失败 {_SENSEVOICE_LAST_ERROR}")
         else:
             text = (r.json().get("text") or "").strip()
             if text:
@@ -312,6 +323,7 @@ def whisper_transcribe(video_id: str) -> Path | None:
 
 def transcribe(video_id: str) -> dict:
     """三级降级编排，返回 {"level": ..., "path": ...}。"""
+    global _SENSEVOICE_LAST_ERROR
     # 幂等：已有转写产物直接复用（retry/重跑不重复调转写 API）
     existing = transcript_dir(video_id) / "transcript.jsonl"
     if existing.exists() and existing.stat().st_size > 0:
@@ -334,7 +346,8 @@ def transcribe(video_id: str) -> dict:
         sv = sensevoice_transcribe(video_id)
         if sv:
             return {"level": "sensevoice", "path": str(sv)}
-        reasons.append("SenseVoice：调用失败（Key 无效/网络异常，详见任务目录 pipeline.log）")
+        reasons.append(f"SenseVoice：{_SENSEVOICE_LAST_ERROR or '调用失败（详见 app.log）'}")
+        _SENSEVOICE_LAST_ERROR = ""
     # 第三级：本地 Whisper 保底（C+A 方案，2026-11-09 拍板）
     print("ℹ 平台字幕与 SenseVoice 均不可用，切换本地 Whisper 保底")
     wh = whisper_transcribe(video_id)
