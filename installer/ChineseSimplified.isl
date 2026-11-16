@@ -185,7 +185,7 @@ FullInstallation=完全安装
 CompactInstallation=简洁安装
 CustomInstallation=自定义安装
 NoUninstallWarningTitle=组件已存在
-NoUninstallWarning=安装程序检测到下列组件已安装在您的计算机中：%n%n%1%n%n取消选中这些组件不会卸载它们。%n%n您确定要继续吗？
+NoUninstallWarning=安装程序检测到下列组件已在您的计算机中：%n%n%1%n%n选择「是」= 确认降级：将移除该组件与对应知识库数据（视频与 md / skill 文档不受影响）。%n%n选择「否」= 维持完整安装（推荐：功能与数据全部保留）。%n%n是否确认降级？
 ComponentSize1=%1 KB
 ComponentSize2=%1 MB
 ComponentsDiskSpaceGBLabel=当前选择的组件需要至少 [gb] GB 的磁盘空间。
