@@ -41,3 +41,6 @@ installer/Output/
 installer/prebuilt/
 web-dist-out/
 web-dist/
+
+# ---- 构建日志 ----
+installer/build-log.txt
