@@ -4,7 +4,7 @@
 
 输入视频链接（B站 / YouTube / 本地文件），自动完成 **下载 → 语音转写 → 画面识别 → 多模态文案对齐 → 结构化摘要 → 知识库入库**，最终支撑「提问即答、答必溯源到视频时间点」的使用体验。
 
-> **当前版本：V1.2（Windows 一键安装器）** — 产品规划见 [docs/PRD.md](docs/PRD.md)，各版本实施记录见 [docs/plan/](docs/plan/)。
+> **当前版本：V1.2.0（成熟安装器 + 体验优化）** — 产品规划见 [docs/PRD.md](docs/PRD.md)，各版本实施记录见 [docs/plan/](docs/plan/)。
 
 ## 四种使用方式（按方便程度排序）
 
@@ -119,7 +119,8 @@ Web / Agent(MCP) / CLI
 | V0.3 | Web 前端（[zhiying-web](https://github.com/zhiying-platform/zhiying-web)） | ✅ |
 | V1.0 | 产品化：打包 / 镜像 / 编排 / 部署文档 / MCP 接入指南 | ✅ |
 | V1.1 | 脚本安装器（install/start/pg-setup 三件套） | ✅ |
-| V1.2 | Windows 一键安装器：exe 图形向导 + 托盘常驻 + 卸载数据保护 | ✅ 当前 |
+| V1.2 | Windows 一键安装器 + 降级确认 / 失败重试 / 进度条 / 启动提速 / 错误透传 / Key 同步 | ✅ 当前 |
+| V1.3 | 项目整体 UI 与 Logo 优化设计 | 📋 规划中 |
 
 ## 相关仓库
 
