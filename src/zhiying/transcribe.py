@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import time
 from pathlib import Path
 
 from zhiying import proc
@@ -207,6 +208,7 @@ def sensevoice_transcribe(video_id: str) -> Path | None:
     entries: list[dict] = []
     idx = 0
     max_idx = int(duration / slice_len) + 1
+    _t_start = time.monotonic()
     while idx < max_idx:
         seg = seg_dir / f"seg_{idx:03d}.wav"
         cmd = [ff, "-y", "-i", str(audio), "-ss", str(idx * slice_len), "-t", str(slice_len),
@@ -237,6 +239,25 @@ def sensevoice_transcribe(video_id: str) -> Path | None:
                                 "text": text, "origin": "sensevoice"})
         seg.unlink(missing_ok=True)
         idx += 1
+        # 进度上报（V1.3：任务台显示百分比与预期剩余时间）
+        try:
+            from zhiying.pipeline import set_stage
+
+            done_n = min(idx, max_idx)
+            remaining = max_idx - done_n
+            # 简单滑动平均估算剩余时间：按已耗时推算
+            eta = None
+            if done_n > 0 and remaining > 0:
+                elapsed = time.monotonic() - _t_start
+                eta = int(elapsed / done_n * remaining)
+            set_stage(
+                video_id, "transcribing",
+                f"语音转写（三级降级）: 分片 {done_n}/{max_idx}",
+                progress=done_n, progress_total=max_idx, progress_unit="分片",
+                eta_seconds=eta,
+            )
+        except Exception:  # noqa: BLE001  进度上报失败不阻断转写
+            pass
     if not entries:
         return None
     with out.open("w", encoding="utf-8") as f:

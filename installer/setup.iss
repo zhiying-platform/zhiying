@@ -112,6 +112,14 @@ Name: "desktopicon"; Description: "创建桌面快捷方式(&D)"; GroupDescripti
 ; postinstall 启动也走 pythonw，安装完成后不会留一个 cmd 窗口
 Filename: "{app}\runtime\python\pythonw.exe"; Parameters: "-m zhiying.tray"; WorkingDir: "{app}"; Description: "立即启动 知映 zhiying"; Flags: nowait postinstall skipifsilent
 
+[InstallDelete]
+; 覆盖安装（升级）时先清理：
+; 1) 旧版前端产物（含旧 hash 命名 chunk——Copy-Item 时代曾积存两套 JS，页面加载到旧版）
+;    本条随 /MIR 镜像方案兜底：确保升级后 web 目录与安装包严格一致
+Type: filesandordirs; Name: "{app}\web"
+; 2) 旧版后端源码包（含旧 __pycache__；新版源码由 [Files] 重新安装）
+Type: filesandordirs; Name: "{app}\runtime\python\Lib\site-packages\zhiying"
+
 [UninstallDelete]
 ; 清理卸载后残留（数据目录 {userappdata}\zhiying 由 [Code] 按用户选择处理）
 Type: filesandordirs; Name: "{app}\runtime\python\Lib\site-packages\pip"

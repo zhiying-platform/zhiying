@@ -283,6 +283,11 @@ def list_tasks(
                 "status": meta.status if meta else "",
                 "stage": stage,
                 "error": (task or {}).get("error", ""),
+                "detail": (task or {}).get("detail", ""),
+                "progress": (task or {}).get("progress"),
+                "progress_total": (task or {}).get("progress_total"),
+                "progress_unit": (task or {}).get("progress_unit", ""),
+                "eta_seconds": (task or {}).get("eta_seconds"),
                 "stuck": stuck and not (resume_info or {}).get("resumed"),
                 "updated_at": (task or {}).get("updated_at", ""),
                 "auto_resume_count": (task or {}).get("auto_resume_count", 0),
@@ -367,7 +372,9 @@ def task_detail(video_id: str) -> dict:
         raise HTTPException(status_code=404, detail="task not found")
     task = get_task(video_id) or {}
     return {"video_id": video_id, "meta": {k: v for k, v in vars(meta).items()}, "stage": task.get("stage", "-"),
-            "detail": task.get("detail", ""), "error": task.get("error", "")}
+            "detail": task.get("detail", ""), "error": task.get("error", ""),
+            "progress": task.get("progress"), "progress_total": task.get("progress_total"),
+            "progress_unit": task.get("progress_unit", ""), "eta_seconds": task.get("eta_seconds")}
 
 
 @app.post("/api/search")

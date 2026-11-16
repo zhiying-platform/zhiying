@@ -15,6 +15,7 @@ from __future__ import annotations
 import concurrent.futures as cf
 import json
 import os
+import time
 from pathlib import Path
 
 import requests
@@ -54,10 +55,29 @@ def describe_frames(video_id: str, max_frames: int = 20, force: bool = False, pr
         return {**f, "description": desc}
 
     out: list[dict] = []
+    total = len(frames)
+    done_n = 0
+    _t0 = time.monotonic()
     # 并发 4：兼顾速度与免费档速率限制
     with cf.ThreadPoolExecutor(max_workers=4) as ex:
         for item in ex.map(work, frames):
             out.append(item)
+            done_n += 1
+            # 进度上报（V1.3：任务台显示百分比与预期剩余时间）
+            try:
+                from zhiying.pipeline import set_stage
+
+                eta = None
+                if done_n < total:
+                    eta = int((time.monotonic() - _t0) / done_n * (total - done_n))
+                set_stage(
+                    video_id, "visual",
+                    f"画面识别（{precision}档）: {done_n}/{total} 帧",
+                    progress=done_n, progress_total=total, progress_unit="帧",
+                    eta_seconds=eta,
+                )
+            except Exception:  # noqa: BLE001  进度上报失败不阻断识别
+                pass
     cache.write_text(json.dumps({"precision": precision, "items": out}, ensure_ascii=False, indent=2), encoding="utf-8")
     return out
 
