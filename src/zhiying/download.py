@@ -117,8 +117,12 @@ def find_existing_source(video_id: str) -> Path | None:
     return None
 
 
-def _run_ytdlp(url: str, out_dir: Path, quality: str = "1080") -> tuple[int, str]:
-    """调用 yt-dlp 下载；返回 (returncode, stderr 尾部)。"""
+def _run_ytdlp(url: str, out_dir: Path, quality: str = "1080", video_id: str | None = None) -> tuple[int, str]:
+    """调用 yt-dlp 下载；返回 (returncode, stderr 尾部)。
+
+    video_id 非空时，逐行解析 yt-dlp 的 `[download] NN.N%` 输出并上报进度，
+    供任务台显示下载百分比与预期剩余时间（V1.3 进度条最后一环）。
+    """
     prefix = _ytdlp_cmd()
     # 格式选择：优先约束清晰度，但必须有逐级回退（竖屏/低清源会匹配不到）
     # 链路：限定高度 → 最佳可用 → 最差可用，保证任何视频都能落下一个文件
@@ -143,10 +147,55 @@ def _run_ytdlp(url: str, out_dir: Path, quality: str = "1080") -> tuple[int, str
         "--write-info-json",
         url,
     ]
-    res = proc.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", env=_ytdlp_env())
-    tail = "\n".join((res.stderr or "").strip().splitlines()[-6:])
-    printed = [ln for ln in (res.stdout or "").splitlines() if ln.strip().endswith((".mp4", ".mkv", ".webm", ".flv"))]
-    return res.returncode, printed[-1] if printed else tail
+    # 逐行读 yt-dlp 输出：实时上报下载进度，同时收集尾部供错误诊断。
+    # 不用 capture_output——那会把进度全吞掉，下载阶段任务台只能干等（实测缺口）。
+    import re as _re
+
+    pct_re = _re.compile(r"\[download\]\s+(\d{1,3}(?:\.\d+)?)%")
+    eta_re = _re.compile(r"ETA\s+(\d{2}:\d{2}(?::\d{2})?)")
+    seen: list[str] = []
+    last_pct = -1
+    last_report = 0.0
+    popen_kwargs = dict(
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        text=True, encoding="utf-8", errors="replace",
+        bufsize=1, env=_ytdlp_env(),
+    )
+    flags = proc.no_window_flags()
+    process = subprocess.Popen(cmd, creationflags=flags, **popen_kwargs)
+    assert process.stdout is not None
+    for line in process.stdout:
+        line = line.rstrip()
+        seen.append(line)
+        if len(seen) > 40:
+            seen.pop(0)
+        m = pct_re.search(line)
+        if m and video_id:
+            pct = int(float(m.group(1)))
+            # 限流：同一百分比不重复写 task.json（yt-dlp 每 0.1s 刷一次）
+            now = time.monotonic()
+            if pct != last_pct and (now - last_report >= 0.5 or pct == 100):
+                em = eta_re.search(line)
+                eta = None
+                if em:
+                    parts = [int(x) for x in em.group(1).split(":")]
+                    eta = parts[0] * 60 + parts[1] if len(parts) == 2 else parts[0] * 3600 + parts[1] * 60 + parts[2]
+                try:
+                    from zhiying.pipeline import set_stage
+
+                    set_stage(
+                        video_id, "downloading",
+                        f"下载视频: {pct}%",
+                        progress=pct, progress_total=100, progress_unit="%",
+                        eta_seconds=eta,
+                    )
+                except Exception:  # noqa: BLE001  进度上报失败不阻断下载
+                    pass
+                last_pct, last_report = pct, now
+    rc = process.wait()
+    output = "\n".join(seen)
+    printed = [ln for ln in output.splitlines() if ln.strip().endswith((".mp4", ".mkv", ".webm", ".flv"))]
+    return rc, printed[-1] if printed else output
 
 
 def _ytdlp_env() -> dict:
@@ -293,7 +342,7 @@ def download(src: str, quality: str = "1080", force: bool = False) -> VideoMeta:
     meta.status = "downloading"
     _save_meta(mp, meta)
     out = source_dir(vid)
-    rc, msg = _run_ytdlp(src, out, quality)
+    rc, msg = _run_ytdlp(src, out, quality, video_id=vid)
 
     # CDN 瞬时错误重试（实测：B站 PCDN 节点 mcdn.bilivideo.cn:8082 经常拒绝连接，
     # yt-dlp 内部 retries 只重试同一节点；重新请求播放地址通常会换到不同 CDN）
@@ -303,7 +352,7 @@ def download(src: str, quality: str = "1080", force: bool = False) -> VideoMeta:
         wait = 5 * attempt
         print(f"⚠ 网络瞬时错误（第 {attempt} 次重试，{wait}s 后）：{msg[-120:]}")
         time.sleep(wait)
-        rc, msg = _run_ytdlp(src, out, quality)
+        rc, msg = _run_ytdlp(src, out, quality, video_id=vid)
 
     # DR-39：登录缺失/失效时，若有交互环境则弹浏览器引导登录后重试一次
     if rc != 0 and _is_login_error(msg) and _interactive_allowed():
@@ -312,7 +361,7 @@ def download(src: str, quality: str = "1080", force: bool = False) -> VideoMeta:
             print(f"ℹ 检测到 {site} 需要登录，弹出浏览器引导登录...")
             cookie_f = capture_cookies_interactive(site, timeout_sec=300)
             if cookie_f:
-                rc, msg = _run_ytdlp(src, out, quality)  # 重试一次（带新 Cookie）
+                rc, msg = _run_ytdlp(src, out, quality, video_id=vid)  # 重试一次（带新 Cookie）
 
     if rc != 0:
         meta.status, meta.error = "failed", msg
