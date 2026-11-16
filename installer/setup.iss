@@ -132,6 +132,7 @@ var
   gDeletePG: Boolean;
   gDeleteUserData: Boolean;
   gDataDir: String;
+  gDowngradeConfirmed: Boolean;
 
 // 目录下是否存在任何文件或子目录
 function HasFilesIn(const Dir: String): Boolean;
@@ -217,6 +218,41 @@ begin
     end
     else
       Result := False;
+  end;
+end;
+
+// 组件选择页「下一步」时：检测「完整→精简」降级并让用户确认
+// 是 = 确认降级（装完后 ssPostInstall 移除 PG 组件与知识库数据）
+// 否 = 把 pg 组件选回来，安装延续为完整（组件与数据全保留）
+function NextButtonClick(CurPageId: Integer): Boolean;
+begin
+  Result := True;
+  if CurPageId = wpSelectComponents then
+  begin
+    // 仅覆盖安装且旧装含 PG、本次未选 pg 时触发（全新安装无旧 pg 目录，不弹窗）
+    if DirExists(ExpandConstant('{app}\runtime\pg')) and (not IsComponentSelected('pg')) then
+    begin
+      // 静默安装无法交互：按安全默认维持完整安装（保留组件与数据）
+      if WizardSilent() then
+        exit;
+      if MsgBox('检测到你正在从「完整安装」降级为「精简安装」。' + #13#10 + #13#10 +
+               '确认降级将移除知识库组件（PostgreSQL + pgvector）与知识库数据库' + #13#10 +
+               '（视频与 md / skill 文档不受影响）。' + #13#10 + #13#10 +
+               '选择「否」= 维持完整安装（推荐：功能保留）。' + #13#10 +
+               '是否确认降级？', mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDYES then
+      begin
+        gDowngradeConfirmed := True;
+        gDataDir := ResolveDataDir();
+      end
+      else
+      begin
+        // 维持完整安装：无需任何操作——Inno 升级不清除未选组件的旧文件（实测：
+        // 1622 个 PG 文件原地保留），数据目录不动，kb_available 继续 True，
+        // 功能延续完整安装语义。仅提示用户。
+        MsgBox('已保留完整安装：知识库组件与数据不变。' + #13#10 +
+               '（本次仅更新核心程序与界面）', mbInformation, MB_OK);
+      end;
+    end;
   end;
 end;
 
@@ -378,6 +414,15 @@ begin
         'ZHIYING_DATA=' + ExpandConstant('{userappdata}\zhiying') + #13#10 +
         'ZHIYING_WEB_DIST=' + ExpandConstant('{app}\web') + #13#10;
       SaveStringToFile(envPath, envContent, False);
+    end;
+    // 降级确认后的清理：移除 PG 组件与知识库数据（用户在组件选择页明确同意）
+    if gDowngradeConfirmed then
+    begin
+      DelTree(ExpandConstant('{app}\runtime\pg'), True, True, True);
+      DelTree(gDataDir + '\pg', True, True, True);
+      DeleteFile(gDataDir + '\pg.port');
+      DeleteFile(gDataDir + '\pg.createdb');
+      DeleteFile(gDataDir + '\pg.log');
     end;
   end;
 end;
