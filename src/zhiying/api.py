@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import sys
 import threading
 from pathlib import Path
 
@@ -661,6 +662,23 @@ def save_settings(req: SettingsUpdate) -> dict:
     env_path.parent.mkdir(parents=True, exist_ok=True)
     env_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     envkeys.reload_dotenv()
+    # 关键（实测坑）：Windows 用户级环境变量会注入进程环境，且 getenv 优先读进程环境。
+    # 若只写 .env，旧的环境变量会遮蔽新 Key（用户实测：网页设置的新 Key 从未生效，
+    # 一直用注册表旧 Key 报 401）。因此保存时同步：
+    #   1) 当前进程 os.environ —— 本进程立即生效（含后台任务线程）
+    #   2) Windows 用户注册表 —— 下次启动的托盘进程拿到新 Key
+    import os as _os
+
+    for name in changed:
+        _os.environ[name] = updates[name]
+        if sys.platform == "win32":
+            try:
+                import winreg
+
+                with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment", 0, winreg.KEY_SET_VALUE) as k:
+                    winreg.SetValueEx(k, name, 0, winreg.REG_SZ, updates[name])
+            except OSError:
+                pass  # 无注册表写权限时 .env 与进程环境仍生效
     return {"saved": True, "changed": changed, "keys": {
         name: {"configured": bool(getenv(name)), "masked": _mask_key(getenv(name))}
         for name in _SETTINGS_KEYS
