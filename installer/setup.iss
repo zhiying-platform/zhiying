@@ -391,6 +391,8 @@ procedure CurStepChanged(CurStep: TSetupStep);
 var
   envContent: String;
   envPath: String;
+  pgData: String;
+  rc: Integer;
 begin
   if CurStep = ssPostInstall then
   begin
@@ -402,6 +404,20 @@ begin
         'ZHIYING_DATA=' + ExpandConstant('{userappdata}\zhiying') + #13#10 +
         'ZHIYING_WEB_DIST=' + ExpandConstant('{app}\web') + #13#10;
       SaveStringToFile(envPath, envContent, False);
+    end;
+    // 预初始化数据库（选了 pg 组件时）：把 initdb 提前到安装阶段，
+    // 首次启动从 ~13s 降到 ~3s（用户实测：装完到浏览器打开有明显等待）。
+    // 升级场景已有数据库则不动；静默降级确认后 pg 未选，自然跳过。
+    if IsComponentSelected('pg') then
+    begin
+      pgData := ResolveDataDir() + '\pg';
+      if (not FileExists(pgData + '\PG_VERSION')) and
+         FileExists(ExpandConstant('{app}\runtime\pg\bin\initdb.exe')) then
+      begin
+        Exec(ExpandConstant('{app}\runtime\pg\bin\initdb.exe'),
+             '-D "' + pgData + '" -U postgres -E UTF8 --locale=C',
+             '', SW_HIDE, ewWaitUntilTerminated, rc);
+      end;
     end;
     // 降级确认后的清理：移除 PG 组件与知识库数据（用户在内置弹窗点「是」确认）
     // 双保险：必须同时「确认过降级」且「当前确实未选 pg」，防止误删
