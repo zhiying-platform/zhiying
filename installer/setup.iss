@@ -227,13 +227,15 @@ end;
 function NextButtonClick(CurPageId: Integer): Boolean;
 begin
   Result := True;
-  // 每次点「下一步」先重置：本事件在内置「组件已存在」弹窗之前触发，
-  // 用户点「否」返回组件页后若改选 pg，必须回到「未确认降级」状态
-  gDowngradeConfirmed := False;
   if WizardSilent() then
     exit;  // 静默安装不弹窗，安全默认维持完整安装
   if CurPageId = wpSelectComponents then
   begin
+    // 重置必须只在本页发生：NextButtonClick 对每一页的「下一步」都触发，
+    // 若在顶部无条件重置，后续页面（就绪页）会把降级确认清掉 →
+    // ssPostInstall 判断为 False → PG 组件与数据不删（实测 bug：用户确认降级后
+    // 组件仍残留，托盘仍拉起 PG，菜单仍是完整菜单）
+    gDowngradeConfirmed := False;
     if DirExists(ExpandConstant('{app}\runtime\pg')) and (not IsComponentSelected('pg')) then
     begin
       gDowngradeConfirmed := True;
