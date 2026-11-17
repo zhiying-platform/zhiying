@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/logo/final/zhiying-logo.png" alt="知映 zhiying" width="420">
+</p>
+
 # 知映 zhiying
 
 把「收藏夹里吃灰的视频」变成「可检索、可问答、可溯源到时间点的视频知识库」。
