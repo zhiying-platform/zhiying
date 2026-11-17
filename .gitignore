@@ -47,3 +47,7 @@ installer/build-log.txt
 
 # ---- Logo 探索草稿（最终稿在 assets/logo/final/）----
 assets/logo/concepts/
+
+# ---- Logo 验证预览产物 ----
+assets/logo/final/sidebar-preview.html
+assets/logo/final/sidebar.png
