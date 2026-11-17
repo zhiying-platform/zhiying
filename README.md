@@ -10,7 +10,7 @@
 
 | 方式 | 适合谁 | 入口 |
 |---|---|---|
-| **📦 Windows 安装器** | 普通用户（零环境） | 双击 `zhiying-setup.exe`，装完双击桌面图标即用，服务常驻托盘 |
+| **📦 Windows 安装器** | 普通用户（零环境） | 从 [Releases](https://github.com/zhiying-platform/zhiying/releases/latest) 下载 `zhiying-setup.exe`，装完双击桌面图标即用，服务常驻托盘 |
 | **🌐 Web 界面** | 日常使用 | 浏览器打开 `http://127.0.0.1:8600`（Docker 部署自带，无需额外启动） |
 | **🤖 Agent 对话**（MCP） | AI 工具重度用户 | 对话里直接丢链接、直接提问（见 [docs/MCP-SETUP.md](docs/MCP-SETUP.md)） |
 | **⌨️ CLI** | 脚本/批量场景 | `zhiying ingest <url>` |
@@ -19,7 +19,7 @@
 
 ## 快速开始（Windows 安装器，最省事）
 
-双击 `zhiying-setup.exe` → 中文向导选组件（完整含知识库 / 精简纯 md）→ 装完双击桌面「知映 zhiying」。
+从 [Releases 最新版](https://github.com/zhiying-platform/zhiying/releases/latest) 下载 `zhiying-setup.exe` → 双击 → 中文向导选组件（完整含知识库 / 精简纯 md）→ 装完双击桌面「知映 zhiying」。
 
 - 服务以**托盘图标**常驻（任务栏右下角），关浏览器服务继续运行
 - 右键托盘「退出」才停止服务；数据在 `%APPDATA%\zhiying`，卸载不丢

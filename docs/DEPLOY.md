@@ -11,6 +11,8 @@
 
 ## A. Windows 安装器（普通用户首选）
 
+> 安装包下载：[Releases 最新版](https://github.com/zhiying-platform/zhiying/releases/latest) → `zhiying-setup.exe`
+
 ### 前置
 
 - Windows 10/11 x64
