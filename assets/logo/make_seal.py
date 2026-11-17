@@ -4,8 +4,8 @@ from __future__ import annotations
 import re
 import subprocess
 
-SRC = r"D:\projectMenu\zhiying\assets\logo\final\zhiying-logo.svg"
-SEAL = r"D:\projectMenu\zhiying\assets\logo\final\zhiying-seal.svg"
+SRC = os.path.join(os.path.dirname(__file__), "final", "zhiying-logo.svg")
+SEAL = os.path.join(os.path.dirname(__file__), "final", "zhiying-seal.svg")
 CHROME = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
 
 svg = open(SRC, encoding="utf-8").read()
@@ -21,7 +21,7 @@ out = (
 open(SEAL, "w", encoding="utf-8").write(out)
 print("seal 方形变体已生成")
 
-logo_dir = r"D:\projectMenu\zhiying\assets\logo\final"
+logo_dir = os.path.join(os.path.dirname(__file__), "final")
 for s in (512, 256, 128, 64, 48, 32, 16):
     subprocess.run(
         [CHROME, "--headless", "--disable-gpu", "--hide-scrollbars",

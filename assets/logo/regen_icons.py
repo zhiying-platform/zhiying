@@ -21,10 +21,10 @@ from pathlib import Path
 
 from PIL import Image
 
-ROOT = Path(r"D:\projectMenu\zhiying")
+ROOT = Path(__file__).resolve().parents[2]
 FINAL = ROOT / "assets" / "logo" / "final"
-WEB_ASSETS = Path(r"D:\projectMenu\zhiying-web\src\assets")
-WEB_PUBLIC = Path(r"D:\projectMenu\zhiying-web\public")
+WEB_ASSETS = ROOT.parent / "zhiying-web" / "src" / "assets"
+WEB_PUBLIC = ROOT.parent / "zhiying-web" / "public"
 CHROME = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
 
 SEAL_SVG = FINAL / "zhiying-seal.svg"

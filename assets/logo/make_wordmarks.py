@@ -1,13 +1,14 @@
 """用真矢量字形生成三个参考图级别的「知映」字标概念 SVG。"""
 from __future__ import annotations
 
+import os
 import sys
 
-sys.path.insert(0, r"D:\projectMenu\zhiying\assets\logo")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from glyphs import char_to_paths  # noqa: E402
 
-OUT = r"D:\projectMenu\zhiying\assets\logo\concepts"
-XINWEI = r"C:\Windows\Fonts\STXINWEI.TTF"
+OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "concepts")
+XINWEI = os.environ.get("ZHIYING_FONT_XINWEI", r"C:\Windows\Fonts\STXINWEI.TTF")
 KAITI = r"C:\Windows\Fonts\simkai.ttf"
 
 RED = "#C8102E"

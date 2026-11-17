@@ -81,7 +81,7 @@ zhiying doctor                                     # 环境自检
 
 ```bash
 # Claude Code 一条命令
-claude mcp add zhiying -- D:\projectMenu\zhiying\scripts\zhiying-mcp.cmd
+claude mcp add zhiying -- <仓库路径>\scripts\zhiying-mcp.cmd
 ```
 
 接入后对话里直接说：「帮我把这个视频入库：<链接>」「视频里是怎么处理菠萝的？」

@@ -8,8 +8,9 @@
 # 这样双击时不会残留 cmd 窗口（曾出现「校验知识库表结构」窗口不自动关闭）。
 # ============================================================
 $ErrorActionPreference = "Stop"
+$root = Split-Path $PSScriptRoot -Parent
 $gbk = [System.Text.Encoding]::GetEncoding(936)
-$dst = "D:\projectMenu\zhiying\scripts\installed"
+$dst = Join-Path $root "scripts\installed"
 New-Item -ItemType Directory -Force -Path $dst | Out-Null
 
 function Write-GbkScript($name, $content) {
@@ -149,6 +150,6 @@ $readme = @'
   嵌入式数据库：自动选择空闲端口（15499 起），记录在 %APPDATA%\zhiying\pg.port
   这样不会与 Docker、本机已装 PostgreSQL 等冲突。
 '@
-[IO.File]::WriteAllText("D:\projectMenu\zhiying\docs\installation-readme.txt", ($readme -replace "`n", "`r`n"), $gbk)
+[IO.File]::WriteAllText((Join-Path $root "docs\installation-readme.txt"), ($readme -replace "`n", "`r`n"), $gbk)
 Write-Host "已生成: docs\installation-readme.txt（GBK）"
 Write-Host "=== 脚本组生成完毕 ==="

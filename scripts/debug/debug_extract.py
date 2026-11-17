@@ -1,7 +1,8 @@
 """调试脚本：打印 LLM 对 BV1J54W6NELg 材料的原始返回。"""
 import sys
+from pathlib import Path
 
-sys.path.insert(0, r"D:\projectMenu\zhiying\src")
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
 from zhiying.distill import _load_material
 from zhiying.llm import _longcat_chat

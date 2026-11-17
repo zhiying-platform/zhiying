@@ -4,7 +4,7 @@ title 知映 zhiying - PostgreSQL zip 版初始化（方案 A 嵌入式 PG）
 
 rem ============================================
 rem 知映 zhiying — PostgreSQL zip 版自动初始化（DR-41 方案 A）
-rem 前置：已下载 PostgreSQL 18 zip 版并解压（如 D:\zhiying\pgsql）
+rem 前置：已下载 PostgreSQL 18 zip 版并解压（如 <PG\pgsql>）
 rem       https://www.enterprisedb.com/download-postgresql-binaries
 rem 用法：scripts\pg-setup.cmd <PG解压目录>
 rem 幂等：data 目录已存在则跳过 initdb
@@ -13,7 +13,7 @@ rem ============================================
 set "PG_HOME=%~1"
 if "%PG_HOME%"=="" (
     echo 用法: %~nx0 ^<PostgreSQL解压目录^>
-    echo 示例: %~nx0 D:\zhiying\pgsql
+    echo 示例: %~nx0 <PG\pgsql>
     echo.
     echo 下载地址: https://www.enterprisedb.com/download-postgresql-binaries
     echo （选 Windows x86-64 版本，解压后把 bin 同级的目录传进来）

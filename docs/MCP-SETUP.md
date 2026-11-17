@@ -11,7 +11,7 @@
 | **Windows 安装器**（普通用户） | `安装目录\scripts\zhiying-mcp.cmd` | 默认装在 `%LOCALAPPDATA%\Programs\zhiying`，已内置 Python 运行时 |
 | **源码部署**（开发者） | `仓库路径\scripts\zhiying-mcp.cmd` | 需先建 venv 并 `pip install -e .` |
 
-下面示例以源码路径 `D:\projectMenu\zhiying` 为例，换成你实际的安装路径即可。
+下面示例以源码根目录（仓库克隆位置）为例，换成你实际的安装路径即可。
 服务未启动时，MCP 工具调用会报连接失败——先用桌面图标（安装版）或 `start.cmd` 起服务。
 
 ## Windows 启动器（推荐）
@@ -19,7 +19,7 @@
 两个仓都提供 `scripts\zhiying-mcp.cmd`，它替你处理 Python 路径与环境变量：
 
 ```text
-D:\projectMenu\zhiying\scripts\zhiying-mcp.cmd
+<仓库路径>\scripts\zhiying-mcp.cmd
 ```
 
 各 Agent 的 MCP 配置里 **command 直接填这个 .cmd 文件路径**即可，无需手写解释器绝对路径。
@@ -29,7 +29,7 @@ D:\projectMenu\zhiying\scripts\zhiying-mcp.cmd
 ### Claude Code（最简单，一条命令）
 
 ```bash
-claude mcp add zhiying -- D:\projectMenu\zhiying\scripts\zhiying-mcp.cmd
+claude mcp add zhiying -- <仓库路径>\scripts\zhiying-mcp.cmd
 ```
 
 验证：`claude mcp list` 应显示 zhiying（5 个工具）。
@@ -40,7 +40,7 @@ claude mcp add zhiying -- D:\projectMenu\zhiying\scripts\zhiying-mcp.cmd
 
 ```toml
 [mcp_servers.zhiying]
-command = "D:\\projectMenu\\zhiying\\scripts\\zhiying-mcp.cmd"
+command = "<仓库路径>\\scripts\\zhiying-mcp.cmd"
 ```
 
 ### OpenClaw
@@ -54,7 +54,7 @@ command = "D:\\projectMenu\\zhiying\\scripts\\zhiying-mcp.cmd"
 {
   "mcpServers": {
     "zhiying": {
-      "command": "D:\\projectMenu\\zhiying\\scripts\\zhiying-mcp.cmd"
+      "command": "<仓库路径>\\scripts\\zhiying-mcp.cmd"
     }
   }
 }

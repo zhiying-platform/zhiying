@@ -26,7 +26,7 @@ param(
 $ErrorActionPreference = "Stop"
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
-$root = "D:\projectMenu\zhiying"
+$root = Split-Path $PSScriptRoot -Parent
 $ins = "$root\installer"
 $iscc = "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe"
 

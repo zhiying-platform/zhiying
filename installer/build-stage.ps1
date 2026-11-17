@@ -7,10 +7,10 @@
 $ErrorActionPreference = "Stop"
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
-$root = "D:\projectMenu\zhiying"
+$root = Split-Path $PSScriptRoot -Parent
 $ins = "$root\installer"
 $stage = "$ins\stage"
-$web = "D:\projectMenu\zhiying-web"
+$web = Join-Path (Split-Path $root -Parent) "zhiying-web"
 
 Set-Location $root
 

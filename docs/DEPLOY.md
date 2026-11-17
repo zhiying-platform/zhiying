@@ -101,7 +101,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File installer\build-installer.ps
 
 ```bash
 # 1) 配置（只需填 2 个必填项）
-cd D:\projectMenu\zhiying
+cd <仓库路径>
 cp .env.example .env
 #   必填：ZHIYING_DB_PASSWORD（任意强密码）、SILICONFLOW_API_KEY 或 LONGCAT_API_KEY
 

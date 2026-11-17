@@ -2,11 +2,11 @@
 
 > 取证方法：Web search 工具本机未配置，改用 GitHub Search API（star 数为真实采用信号）+ 仓颉.Skill 文章取证（12K Star）。非完整 TAM 研究，为需求存在性验证。
 
-## 1. 直接竞品与同赛道热度（GitHub 实测）
+## 1. 同类项目与同赛道热度（GitHub 实测）
 
 | 类别 | 代表仓库 | Star | 与知映关系 |
 |---|---|---|---|
-| 视频知识库（该搜索总量 785 仓库） | IliasHad/edit-mind | 1830 | 最直接竞品：local-first 视频知识库、多模态分析 |
+| 视频知识库（该搜索总量 785 仓库） | IliasHad/edit-mind | 1830 | 直接同类项目：local-first 视频知识库、多模态分析 |
 | 同上 | chubbyguan/chubbyskills | 1319 | 中文多渠道（抖音/B站/小红书/公众号/播客）→ 个人知识库 14 个 AI Skill |
 | 同上 | lycohana/BiliSum | 668 | B站/YouTube/本地视频 AI 摘要+知识库 |
 | NotebookLM 替代品（总量 12378） | MODSetter/SurfSense | 16808 | 隐私/air-gapped NotebookLM 替代，泛内容非视频专属 |
@@ -32,9 +32,9 @@
 - **Agent 原生接入**：MCP 一次接入 OpenClaw/Claude Code/Codex，对话里直接建任务与问答（FR-305）
 - **答案溯源时间戳**：每条引用可跳原视频对应位置（J3）
 
-一句话定位：**「你私人视频库的本地优先、Agent 原生、看得懂画面的 NotebookLM」**——NotebookLM 不强在本地化/中文视频平台/深度视觉理解，竞品 edit-mind/BiliSum 不强在 Agent 集成与中文多渠道，知映卡住这个交叉点。
+一句话定位：**「你私人视频库的本地优先、Agent 原生、看得懂画面的 NotebookLM」**——NotebookLM 不强在本地化/中文视频平台/深度视觉理解，同类项目 edit-mind/BiliSum 不强在 Agent 集成与中文多渠道，知映卡住这个交叉点。
 
 ## 4. 诚实风险
 
 - **非先行者**：edit-mind/ BibiGPT 已占认知；知映差异化（四合一）须真实成立而非纸面，否则沦为「又一个摘要器」。
-- **取证局限**：仅 GitHub 信号 + 单篇文章，未做完整 TAM/竞品深度调研；如需融资或立项汇报，建议补 web 搜索广度与用户访谈。
+- **取证局限**：仅 GitHub 信号 + 单篇文章，未做完整 TAM/同类项目深度调研；如需融资或立项汇报，建议补 web 搜索广度与用户访谈。

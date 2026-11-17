@@ -7,10 +7,11 @@
 from __future__ import annotations
 
 import cv2
+import os
 import numpy as np
 
-SRC = r"C:\Users\25333\.openclaw\workspace\media\inbound\openclaw-staged-68e53663-4374-471c-8371-a3d5893ed322\input-image---44716fe7-a8f3-4fff-bb8e-dccb9ab59990.png"
-OUT_SEAL = r"D:\projectMenu\zhiying\assets\logo\final\zhiying-seal.svg"
+SRC = os.environ.get("ZHIYING_LOGO_SOURCE", os.path.join(os.path.dirname(__file__), "final", "seal-source.png"))
+OUT_SEAL = os.path.join(os.path.dirname(__file__), "final", "zhiying-seal.svg")
 UP = 6
 MIN_AREA = 90
 EPS = 0.4

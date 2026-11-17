@@ -1,7 +1,8 @@
 """调试脚本：烹饪视频 _extract 原始返回。"""
 import sys
+from pathlib import Path
 
-sys.path.insert(0, r"D:\projectMenu\zhiying\src")
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
 from zhiying.distill import _load_material
 from zhiying.llm import _longcat_chat
@@ -15,6 +16,6 @@ prompt = (
     "若无可提取内容 units 返回空数组并加 reason。材料：\n" + material[:20000]
 )
 raw = _longcat_chat([{"role": "user", "content": prompt}], max_tokens=3000, temperature=0.2)
-out = r"D:\projectMenu\zhiying\scripts\debug_gj_raw.txt"
+out = str(Path(__file__).resolve().parent / "debug_gj_raw.txt")
 open(out, "w", encoding="utf-8").write(raw)
 print("RAW 长度:", len(raw), "| 已存", out)
