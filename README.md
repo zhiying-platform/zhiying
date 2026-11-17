@@ -4,7 +4,7 @@
 
 输入视频链接（B站 / YouTube / 本地文件），自动完成 **下载 → 语音转写 → 画面识别 → 多模态文案对齐 → 结构化摘要 → 知识库入库**，最终支撑「提问即答、答必溯源到视频时间点」的使用体验。
 
-> **当前版本：V1.2.0（成熟安装器 + 体验优化）** — 产品规划见 [docs/PRD.md](docs/PRD.md)，各版本实施记录见 [docs/plan/](docs/plan/)。
+> **当前版本：V1.3.0（品牌视觉与 UI 统一）** — 产品规划见 [docs/PRD.md](docs/PRD.md)，各版本实施记录见 [docs/plan/](docs/plan/)。
 
 ## 四种使用方式（按方便程度排序）
 
@@ -119,8 +119,8 @@ Web / Agent(MCP) / CLI
 | V0.3 | Web 前端（[zhiying-web](https://github.com/zhiying-platform/zhiying-web)） | ✅ |
 | V1.0 | 产品化：打包 / 镜像 / 编排 / 部署文档 / MCP 接入指南 | ✅ |
 | V1.1 | 脚本安装器（install/start/pg-setup 三件套） | ✅ |
-| V1.2 | Windows 一键安装器 + 降级确认 / 失败重试 / 进度条 / 启动提速 / 错误透传 / Key 同步 | ✅ 当前 |
-| V1.3 | 项目整体 UI 与 Logo 优化设计 | 📋 规划中 |
+| V1.2 | Windows 一键安装器 + 降级确认 / 失败重试 / 进度条 / 启动提速 / 错误透传 / Key 同步 | ✅ |
+| V1.3 | 品牌 Logo 全套（印章矢量化）+ UI 图标统一 + 安装器向导视觉 | ✅ 当前 |
 
 ## 相关仓库
 
@@ -133,10 +133,14 @@ Web / Agent(MCP) / CLI
 
 | 文档 | 内容 |
 |---|---|
-| [docs/PRD.md](docs/PRD.md) | 产品需求与决策记录（DR-1~DR-42） |
+| [docs/PRD.md](docs/PRD.md) | 产品需求与决策记录（DR-1~DR-51） |
 | [docs/DEPLOY.md](docs/DEPLOY.md) | 部署指南（Windows 安装器 / Docker 一键 / 本地直装 / 排错表） |
 | [docs/MCP-SETUP.md](docs/MCP-SETUP.md) | MCP 接入指南（四种 Agent） |
-| [docs/plan/](docs/plan/) | 各版本实施记录（V0.1–V1.2） |
+| [docs/plan/](docs/plan/) | 各版本实施记录（V0.1–V1.3） |
+
+## 品牌资源
+
+Logo（印章「知」）矢量源在 [assets/logo/final/zhiying-seal.svg](assets/logo/final/zhiying-seal.svg)，由 [fix_seal.py](assets/logo/fix_seal.py) 从原始手写印章图重建；favicon、托盘图标、安装器、前端侧栏均从同一矢量源派生。仓库头像（GitHub Avatar）：`assets/logo/final/github-avatar-512.png`（512×512，白底）。
 
 ## License
 
