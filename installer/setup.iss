@@ -1,4 +1,4 @@
-; ============================================================
+﻿; ============================================================
 ; 知映 zhiying — Windows 离线安装器（Inno Setup 6）
 ; 中文界面 + 组件勾选 + PG 初始化 + 卸载器
 ;
@@ -11,7 +11,7 @@
 #define MyAppName "知映 zhiying"
 ; 版本：优先取命令行 /DMyAppVersion，否则回退到默认值
 #ifndef MyAppVersion
-  #define MyAppVersion "1.2.0"
+  #define MyAppVersion "1.3.0"
 #endif
 #define MyAppPublisher "zhiying-platform"
 #define MyAppExeName "zhiying.exe"
@@ -21,6 +21,8 @@
 #endif
 
 [Setup]
+; 安装器自身图标（exe/标题栏/任务栏，卸载器自动沿用）：此前缺失 → 显示 Inno 默认图标
+SetupIconFile=..\assets\logo\final\zhiying.ico
 WizardImageFile=..\assets\logo\final\wizard-large.png
 WizardSmallImageFile=..\assets\logo\final\wizard-small.png
 AppId={{8C7B6A5D-4E3F-4B2A-9C1D-0F2E3D4C5B6A}
