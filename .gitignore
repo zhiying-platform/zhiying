@@ -44,3 +44,6 @@ web-dist/
 
 # ---- 构建日志 ----
 installer/build-log.txt
+
+# ---- Logo 探索草稿（最终稿在 assets/logo/final/）----
+assets/logo/concepts/
