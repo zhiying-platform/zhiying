@@ -2,6 +2,10 @@
   <img src="assets/logo/final/zhiying-logo.png" alt="知映 zhiying" width="420">
 </p>
 
+<p align="center">
+  <img src="https://img.shields.io/badge/License-Apache--2.0-green" alt="Apache-2.0">
+</p>
+
 # 知映 zhiying
 
 把「收藏夹里吃灰的视频」变成「可检索、可问答、可溯源到时间点的视频知识库」。
@@ -148,4 +152,6 @@ Logo（印章「知」）矢量源在 [assets/logo/final/zhiying-seal.svg](asset
 
 ## License
 
-MIT
+[Apache-2.0](LICENSE)（与 gewu 项目保持一致）
+
+二次开发 / 衍生作品须注明源头：详见 [NOTICE](NOTICE)——保留版权与 NOTICE 声明，修改文件须显著标注「已修改」及修改日期，分发时附带归属内容，并说明本作品基于「知映 zhiying」二次开发。
