@@ -21,6 +21,8 @@
 #endif
 
 [Setup]
+WizardImageFile=..\assets\logo\final\wizard-large.png
+WizardSmallImageFile=..\assets\logo\final\wizard-small.png
 AppId={{8C7B6A5D-4E3F-4B2A-9C1D-0F2E3D4C5B6A}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
