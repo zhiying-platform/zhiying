@@ -51,3 +51,10 @@ assets/logo/concepts/
 # ---- Logo 验证预览产物 ----
 assets/logo/final/sidebar-preview.html
 assets/logo/final/sidebar.png
+assets/logo/final/preview.html
+assets/logo/final/preview.png
+assets/logo/final/seal-white.html
+assets/logo/final/seal-white.png
+assets/logo/final/seal-render.html
+assets/logo/debug/
+assets/logo/__pycache__/
