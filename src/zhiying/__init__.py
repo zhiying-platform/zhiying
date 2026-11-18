@@ -15,7 +15,7 @@ def _read_version() -> str:
             return vf.read_text(encoding="utf-8").strip()
     except Exception:  # noqa: BLE001
         pass
-    return "1.2.0"
+    return "1.3.0"
 
 
 __version__ = _read_version()
