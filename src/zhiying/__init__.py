@@ -1,4 +1,4 @@
-"""知映 zhiying — 视频知识库 CLI。
+﻿"""知映 zhiying — 视频知识库 CLI。
 
 将收藏的视频转为可检索、可问答、可溯源到时间点的知识库。
 版本号单一来源：仓库根 VERSION 文件（安装器、CI、Info.plist 均读取它）。
@@ -15,7 +15,7 @@ def _read_version() -> str:
             return vf.read_text(encoding="utf-8").strip()
     except Exception:  # noqa: BLE001
         pass
-    return "1.3.0"
+    return "1.3.1"
 
 
 __version__ = _read_version()

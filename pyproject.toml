@@ -1,10 +1,10 @@
-[build-system]
+﻿[build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "zhiying"
-version = "1.3.0"
+version = "1.3.1"
 description = "把收藏夹里吃灰的视频变成可检索、可问答、可溯源到时间点的视频知识库"
 readme = "README.md"
 requires-python = ">=3.10"
