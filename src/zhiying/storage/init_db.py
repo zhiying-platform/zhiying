@@ -17,6 +17,7 @@ import sys
 from pathlib import Path
 
 SCHEMA_PATH = Path(__file__).parent / "schema_v1.sql"
+MIGRATIONS_DIR = Path(__file__).parent / "migrations"
 
 
 def _connect_kwargs(args: argparse.Namespace) -> dict:
@@ -58,6 +59,25 @@ def apply_schema(conn_kwargs: dict, database: str) -> None:
     print(f"✅ schema_v1 已应用于 {database}（幂等）")
 
 
+def apply_migrations(conn_kwargs: dict, database: str) -> list[str]:
+    """依次应用 migrations/*.sql（幂等，全用 IF NOT EXISTS）；返回已应用文件名。"""
+    import psycopg
+
+    applied: list[str] = []
+    if not MIGRATIONS_DIR.is_dir():
+        return applied
+    kw = dict(conn_kwargs)
+    kw["dbname"] = database
+    with psycopg.connect(**kw) as conn:
+        for sql_file in sorted(MIGRATIONS_DIR.glob("*.sql")):
+            conn.execute(sql_file.read_text(encoding="utf-8"))
+            applied.append(sql_file.name)
+        conn.commit()
+    if applied:
+        print(f"✅ migrations 已应用: {', '.join(applied)}（幂等）")
+    return applied
+
+
 def verify(conn_kwargs: dict, database: str) -> bool:
     import psycopg
 
@@ -71,6 +91,13 @@ def verify(conn_kwargs: dict, database: str) -> bool:
         print("表清单:", tables)
         need = {"videos", "segments", "chunks"}
         ok = need.issubset(set(tables))
+        # migrations 关键列核验（003 content_hash，DR-23 去重依赖）
+        col = conn.execute(
+            "SELECT 1 FROM information_schema.columns "
+            "WHERE table_name='videos' AND column_name='content_hash'"
+        ).fetchone()
+        print("videos.content_hash:", "✅" if col else "❌ 缺失（migrations 未生效）")
+        ok = ok and bool(col)
         # vector 维度核验
         dim = conn.execute(
             "SELECT atttypmod FROM pg_attribute WHERE attrelid='chunks'::regclass AND attname='embedding'"
@@ -99,6 +126,7 @@ def main(argv: list[str] | None = None) -> int:
         kw = _connect_kwargs(args)
         _ensure_database(kw, args.database)
         apply_schema(kw, args.database)
+        apply_migrations(kw, args.database)
         ok = verify(kw, args.database)
         print("✅ B6 契约预置完成" if ok else "❌ 表缺失，请检查 schema 输出")
         return 0 if ok else 1
