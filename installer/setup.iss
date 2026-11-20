@@ -11,7 +11,7 @@
 #define MyAppName "知映 zhiying"
 ; 版本：优先取命令行 /DMyAppVersion，否则回退到默认值
 #ifndef MyAppVersion
-  #define MyAppVersion "1.3.1"
+  #define MyAppVersion "1.3.2"
 #endif
 #define MyAppPublisher "zhiying-platform"
 #define MyAppExeName "zhiying.exe"
