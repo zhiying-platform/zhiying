@@ -25,6 +25,7 @@ tar -xf "$ins\runtime\python-embed.zip" -C "$stage\python"
 if (-not (Test-Path "$stage\python\python.exe")) { throw "python.exe 未解出" }
 
 # 版本号单一来源：VERSION 拷到 Lib\（__init__._read_version 读 parents[2]\VERSION，安装环境即 Lib\）
+New-Item -ItemType Directory -Force -Path "$stage\python\Lib" | Out-Null   # embeddable zip 平铺无 Lib\，先建目录（fix: v1.4.0 构建首次重跑暴露）
 Copy-Item "$root\VERSION" "$stage\python\Lib\VERSION" -Force
 
 # ._pth 最小化（embeddable 隔离模式），路径交给 site/.pth 接管
