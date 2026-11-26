@@ -32,6 +32,23 @@ powershell -File installer\build-installer.ps1 -Version 1.3.0
 > ⚠️ `-SkipStage` 仍会同步 `src\zhiying` 到 stage（否则会打出旧代码），但**不会**重装依赖、
 **不会**重建前端。改了依赖或前端时不要用它。
 
+### 发布批次一键编排（推荐）
+
+v1.3.0→v1.4.0 各批次手工流程的固化（含防呆核验，任一失败即中止）：
+
+```powershell
+# 全流程：前端构建 → stage 组装 → web 镜像 → 五处版本联动 → pyc 清理 → ISCC → 产物核验 → 提交/tag
+powershell -File installer\release.ps1                    # 版本读仓库根 VERSION，正式包
+powershell -File installer\release.ps1 -Version 1.4.1    # 升版构建
+powershell -File installer\release.ps1 -Fast -SkipTag    # 快速自测（-dev 包，不打 tag）
+powershell -File installer\release.ps1 -NoBuildFrontend  # 前端未变时跳过 npm build
+```
+
+内置核验：stage/web 新文案命中、`Lib\VERSION` 与 `__init__` 回退值一致性、site-packages pyc 全清、`ProductVersion ==` 目标版本（exe 资源字段需 Trim 后比较）、正式包体积下限（防后台超时截断出半个包）、产物时间戳。
+
+> 注意：编排器**不经** `build-installer.ps1`（它内嵌 ISCC，会在 web 同步前先编译出旧前端包）；
+> 改为直接调 `gen-scripts.ps1` + `build-stage.ps1` + pgvector 装入，web 镜像后只编一次。
+
 ---
 
 ## 首次构建：准备物料（只做一次）
@@ -112,5 +129,7 @@ setup.iss (ISCC)  → 打包为 exe（含卸载器、快捷方式、卸载数据
 | `req-binary.txt` | 离线 wheels 下载清单（二进制包） |
 | `req-pure.txt` | 离线 wheels 下载清单（纯源码包，如 jieba） |
 | `build-pgvector.bat` | pgvector 编译脚本（nmake，需 VS Build Tools） |
+| `release.ps1` | 发布批次一键编排器（前端→stage→五处版本→ISCC→核验→tag） |
+| `_replace_asset.ps1` | Release 资产替换（API 删旧传新+字节核验；fine-grained PAT 对资产写端点 403，需 classic PAT） |
 
 > 依赖的唯一权威来源是仓库根 `pyproject.toml`；`req-*.txt` 仅用于批量下载 wheels。
