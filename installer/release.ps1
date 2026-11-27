@@ -1,7 +1,7 @@
 ﻿# ============================================================
 # 知映 zhiying — 发布批次一键编排器（release.ps1）
 #
-# 串起 v1.3.0→v1.3.2 三个批次手工执行的全部步骤（windows-offline-installer-inno skill 11b 节），
+# 串起安装包发布批次的全部固定步骤，
 # 消除手工遗漏面：前端陈旧 dist、stage/web 新旧哈希混放、VERSION 五处联动、陈旧 pyc、
 # ISCC 后台超时截断、ProductVersion 未核验。
 #
@@ -35,7 +35,7 @@ param(
     [switch]$NoBuildFrontend
 )
 
-$ErrorActionPreference = "Continue"   # PS5.1 陷阱：原生命令 stderr 经 2>&1 包装成 ErrorRecord，Stop 会误杀（skill §9）；所有原生病令调用点均有显式 $LASTEXITCODE 检查，关键不变量在步骤 [5/7] 复验
+$ErrorActionPreference = "Continue"   # PS5.1 陷阱：原生命令 stderr 经 2>&1 包装成 ErrorRecord，EAP=Stop 会误杀；所有原生命令调用点均有显式 $LASTEXITCODE 检查，关键不变量在步骤 [5/7] 复验
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $root = Split-Path $PSScriptRoot -Parent
 $webRepo = Join-Path (Split-Path $root -Parent) "zhiying-web"
@@ -212,6 +212,6 @@ Write-Host ""
 Write-Host ("=== 发布批次构建完成: {0}（{1} MB，总耗时 {2} 分 {3} 秒）===" -f $out.Name, $mb, [int]$swTotal.Elapsed.TotalMinutes, $swTotal.Elapsed.Seconds) -ForegroundColor Green
 Write-Host "    产物: $($out.FullName)"
 if (-not $Fast) {
-    Write-Host "    下一步（人工）: GitHub Releases → Draft new release → 选 tag v$Version → 粘说明 → 拖入本 exe"
-    Write-Host "    （API 上传资产受 fine-grained PAT 限制，需网页操作）"
+    Write-Host "    下一步（人工）: GitHub Releases → Draft new release → 选 tag v$Version → 填写说明 → 上传本 exe"
+    Write-Host "    （也可用 GitHub API/CLI 上传资产，需具备 release 写权限的 token）"
 }

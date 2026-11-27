@@ -1,8 +1,8 @@
-# ============================================================
+﻿# ============================================================
 # GitHub Release 发布：创建 Release + 上传安装包
 # 前置：
 #   1) $env:GITHUB_TOKEN = fine-grained PAT（过期 <=366 天，本仓 Contents: Read and write）
-#      注意：zhiying-platform 组织禁止过期 >366 天的 fine-grained PAT（403 会提示调整 lifetime）
+#      注意：部分组织限制 fine-grained PAT 的最长有效期（超限会被组织策略 403，按提示调整）
 #   2) tag 已推送：git push origin <tag>
 # 用法：
 #   powershell -NoProfile -ExecutionPolicy Bypass -File installer\create-release.ps1
@@ -16,7 +16,7 @@ param(
   [string]$Asset = ""
 )
 $ErrorActionPreference = "Stop"
-if (-not $env:GITHUB_TOKEN) { throw "缺少 GITHUB_TOKEN 环境变量（fine-grained PAT，<=366 天）" }
+if (-not $env:GITHUB_TOKEN) { throw "缺少 GITHUB_TOKEN 环境变量（需 release 写权限）" }
 $headers = @{ Authorization = "Bearer $env:GITHUB_TOKEN"; Accept = "application/vnd.github+json" }
 if (-not $Asset) { $Asset = "$PSScriptRoot\Output\zhiying-setup.exe" }
 if (-not (Test-Path $Asset)) { throw "安装包不存在: $Asset" }
