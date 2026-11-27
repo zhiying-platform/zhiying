@@ -32,7 +32,9 @@ param(
     [string]$Version = "",
     [switch]$Fast,
     [switch]$SkipTag,
-    [switch]$NoBuildFrontend
+    [switch]$NoBuildFrontend,
+    [switch]$Upload,
+    [string]$NotesFile = ""
 )
 
 $ErrorActionPreference = "Continue"   # PS5.1 陷阱：原生命令 stderr 经 2>&1 包装成 ErrorRecord，EAP=Stop 会误杀；所有原生命令调用点均有显式 $LASTEXITCODE 检查，关键不变量在步骤 [5/7] 复验
@@ -207,11 +209,44 @@ try {
     } else { Info "跳过 tag（-SkipTag）" }
 } finally { Pop-Location }
 
+# ---------- [9/9] Release 发布（-Upload 时执行；需 GH_TOKEN，classic PAT repo/public_repo）----------
+if ($Upload) {
+    Step "9/9" "Release 发布（建 Release + 上传资产，curl 实现）"
+    if ($Fast) {
+        Write-Warning "    -Fast 自测包不上传（-dev 包不对外），跳过"
+    } elseif (-not ("$env:GH_TOKEN".Trim())) {
+        throw "GH_TOKEN 为空：无法 API 发布。请在面板存入 classic PAT（repo 权限）后重跑，或去掉 -Upload 改网页发布"
+    } else {
+        $t = "$env:GH_TOKEN".Trim()
+        $h = "Authorization: Bearer $t"
+        $relCheck = & curl.exe -s -o "$env:TEMP\zy_rel_check.json" -w "%{http_code}" -H $h "https://api.github.com/repos/zhiying-platform/zhiying/releases/tags/v$Version"
+        if ("$relCheck" -eq "404") {
+            Info "Release v$Version 不存在，创建..."
+            $notesPath = if ($NotesFile -and (Test-Path $NotesFile)) { $NotesFile } else { "$root\installer\release-notes-v$Version.md" }
+            $bodyTxt = if (Test-Path $notesPath) { (Get-Content $notesPath -Raw -Encoding UTF8) } else { "V$Version 发布批次（release.ps1 自动发布）" }
+            $payload = @{ tag_name = "v$Version"; name = "V$Version"; body = $bodyTxt; draft = $false; prerelease = $false } | ConvertTo-Json
+            [IO.File]::WriteAllText("$env:TEMP\zy_rel_create.json", $payload, (New-Object System.Text.UTF8Encoding($false)))
+            $createCode = & curl.exe -s -o "$env:TEMP\zy_rel_create_resp.json" -w "%{http_code}" -X POST -H $h -H "Content-Type: application/json" --data-binary "@$env:TEMP\zy_rel_create.json" "https://api.github.com/repos/zhiying-platform/zhiying/releases"
+            if ("$createCode" -ne "201") { throw "Release 创建失败 HTTP $createCode（tag 是否已推送？见 zy_rel_create_resp.json）" }
+            Ok "Release v$Version 已创建"
+        } elseif ("$relCheck" -eq "200") { Info "Release v$Version 已存在，直接上传/替换资产" }
+        else { throw "Release 查询失败 HTTP $relCheck" }
+        & powershell -NoProfile -ExecutionPolicy Bypass -File "$PSScriptRoot\_replace_asset.ps1" -AssetPath $out.FullName -Tag "v$Version"
+        if ($LASTEXITCODE -ne 0) { throw "资产上传失败（见上方输出）" }
+        Remove-Item "$env:TEMP\zy_rel_check.json","$env:TEMP\zy_rel_create.json","$env:TEMP\zy_rel_create_resp.json" -Force -ErrorAction SilentlyContinue
+    }
+}
+
 $swTotal.Stop()
 Write-Host ""
 Write-Host ("=== 发布批次构建完成: {0}（{1} MB，总耗时 {2} 分 {3} 秒）===" -f $out.Name, $mb, [int]$swTotal.Elapsed.TotalMinutes, $swTotal.Elapsed.Seconds) -ForegroundColor Green
 Write-Host "    产物: $($out.FullName)"
 if (-not $Fast) {
-    Write-Host "    下一步（人工）: GitHub Releases → Draft new release → 选 tag v$Version → 填写说明 → 上传本 exe"
-    Write-Host "    （也可用 GitHub API/CLI 上传资产，需具备 release 写权限的 token）"
+    if ($Upload) {
+        Write-Host "    Release 已发布: https://github.com/zhiying-platform/zhiying/releases/tag/v$Version"
+        Write-Host "    说明可在 Release 页继续编辑润色"
+    } else {
+        Write-Host "    下一步（人工）: GitHub Releases → Draft new release → 选 tag v$Version → 填写说明 → 上传本 exe"
+        Write-Host "    （或下次直接加 -Upload 参数自动发布）"
+    }
 }
